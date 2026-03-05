@@ -7,6 +7,8 @@ import { TenantsModule } from './tenants/tenants.module';
 import { UsersModule } from './users/users.module';
 import { PropertiesModule } from './properties/properties.module';
 import { UnitsModule } from './units/units.module';
+import { ClientsModule } from './clients/clients.module';
+import { ApplicationsModule } from './applications/applications.module';
 import { JwtAuthGuard } from './common/guards';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 
@@ -19,6 +21,8 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
     UsersModule,
     PropertiesModule,
     UnitsModule,
+    ClientsModule,
+    ApplicationsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
