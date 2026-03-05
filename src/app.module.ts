@@ -13,6 +13,9 @@ import { ApplicationsModule } from './applications/applications.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { AccessControlModule } from './access-control/access-control.module';
+import { DocumentsModule } from './documents/documents.module';
 import { JwtAuthGuard } from './common/guards';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 
@@ -31,6 +34,9 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
     ContractsModule,
     InvoicesModule,
     AnalyticsModule,
+    NotificationsModule,
+    AccessControlModule,
+    DocumentsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })

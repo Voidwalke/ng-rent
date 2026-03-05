@@ -2,8 +2,10 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Param,
   Query,
+  Body,
   ParseIntPipe,
 } from '@nestjs/common';
 import {
@@ -13,7 +15,8 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { InvoicesService } from './invoices.service';
-import { CurrentUser } from '../common/decorators';
+import { CurrentUser, Roles } from '../common/decorators';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Счета')
 @ApiBearerAuth()
@@ -24,11 +27,23 @@ export class InvoicesController {
   @Get()
   @ApiOperation({ summary: 'Список счетов' })
   @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'contractId', required: false })
   findAll(
     @CurrentUser('tenantId') tenantId: number,
     @Query('status') status?: string,
+    @Query('contractId') contractId?: string,
   ) {
-    return this.invoicesService.findAll(tenantId, status);
+    return this.invoicesService.findAll(tenantId, {
+      status,
+      contractId: contractId ? parseInt(contractId) : undefined,
+    });
+  }
+
+  @Get('summary')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Сводка по счетам' })
+  getSummary(@CurrentUser('tenantId') tenantId: number) {
+    return this.invoicesService.getSummary(tenantId);
   }
 
   @Get(':id')
@@ -38,8 +53,18 @@ export class InvoicesController {
   }
 
   @Post(':id/pay')
-  @ApiOperation({ summary: 'Оплатить счёт' })
-  pay(@Param('id', ParseIntPipe) id: number) {
-    return this.invoicesService.pay(id);
+  @ApiOperation({ summary: 'Подтвердить оплату' })
+  pay(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { paidAmount?: number; paymentReference?: string },
+  ) {
+    return this.invoicesService.pay(id, body.paidAmount, body.paymentReference);
+  }
+
+  @Patch(':id/cancel')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Отменить счёт' })
+  cancel(@Param('id', ParseIntPipe) id: number) {
+    return this.invoicesService.cancel(id);
   }
 }
