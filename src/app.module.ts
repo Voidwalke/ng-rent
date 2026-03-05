@@ -14,10 +14,13 @@ import { ClientsModule } from './clients/clients.module';
 import { ApplicationsModule } from './applications/applications.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { InvoicesModule } from './invoices/invoices.module';
+import { PaymentsModule } from './payments/payments.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AccessControlModule } from './access-control/access-control.module';
 import { DocumentsModule } from './documents/documents.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { SupportModule } from './support/support.module';
 import { HealthModule } from './health/health.module';
 import { JwtAuthGuard } from './common/guards';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
@@ -26,7 +29,6 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
-    // Лимит: 60 запросов за 60 секунд
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 60 }]),
     PrismaModule,
     RedisModule,
@@ -39,10 +41,13 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
     ApplicationsModule,
     ContractsModule,
     InvoicesModule,
+    PaymentsModule,
     AnalyticsModule,
     NotificationsModule,
     AccessControlModule,
     DocumentsModule,
+    SubscriptionsModule,
+    SupportModule,
     HealthModule,
   ],
   providers: [

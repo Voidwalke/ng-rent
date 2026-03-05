@@ -1,0 +1,81 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  Query,
+  ParseIntPipe,
+} from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { SupportService } from './support.service';
+import { CurrentUser, Roles } from '../common/decorators';
+import { TicketStatus } from '@prisma/client';
+
+@ApiTags('Поддержка')
+@ApiBearerAuth()
+@Controller('support')
+export class SupportController {
+  constructor(private readonly supportService: SupportService) {}
+
+  @Post('tickets')
+  @ApiOperation({ summary: 'Создать тикет' })
+  create(
+    @CurrentUser() user: any,
+    @Body()
+    body: {
+      subject: string;
+      category?: string;
+      priority?: 'low' | 'medium' | 'high';
+      message: string;
+    },
+  ) {
+    return this.supportService.createTicket(user.tenantId, user.id, body);
+  }
+
+  @Get('tickets')
+  @ApiOperation({ summary: 'Список тикетов' })
+  findAll(
+    @CurrentUser() user: any,
+    @Query('status') status?: TicketStatus,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.supportService.findAll(user.tenantId, {
+      status,
+      page: page ? +page : 1,
+      limit: limit ? +limit : 20,
+    });
+  }
+
+  @Get('tickets/:id')
+  @ApiOperation({ summary: 'Тикет с историей сообщений' })
+  findOne(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
+    return this.supportService.findOne(user.tenantId, id);
+  }
+
+  @Post('tickets/:id/messages')
+  @ApiOperation({ summary: 'Добавить сообщение в тикет' })
+  addMessage(
+    @CurrentUser() user: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body('message') message: string,
+  ) {
+    return this.supportService.addMessage(user.tenantId, id, user.id, message);
+  }
+
+  @Patch('tickets/:id/resolve')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Решить тикет' })
+  resolve(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
+    return this.supportService.resolve(user.tenantId, id);
+  }
+
+  @Patch('tickets/:id/close')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Закрыть тикет' })
+  close(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
+    return this.supportService.close(user.tenantId, id);
+  }
+}
