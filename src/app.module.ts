@@ -5,6 +5,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { UsersModule } from './users/users.module';
+import { PropertiesModule } from './properties/properties.module';
+import { UnitsModule } from './units/units.module';
 import { JwtAuthGuard } from './common/guards';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 
@@ -15,6 +17,8 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
     AuthModule,
     TenantsModule,
     UsersModule,
+    PropertiesModule,
+    UnitsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
