@@ -76,7 +76,7 @@ export class UsersService {
 
   async remove(id: number) {
     await this.findOne(id);
-    // soft delete
+    // мягкое удаление
     return this.prisma.user.update({
       where: { id },
       data: { deletedAt: new Date() },
