@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 export interface DashboardData {
   totalProperties: number;
@@ -15,9 +16,16 @@ export interface DashboardData {
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
 
   async getDashboard(tenantId: number): Promise<DashboardData> {
+    const cacheKey = `analytics:dashboard:${tenantId}`;
+    const cached = await this.redis.get<DashboardData>(cacheKey);
+    if (cached) return cached;
+
     const [
       totalProperties,
       totalUnits,
@@ -50,13 +58,12 @@ export class AnalyticsService {
         ? Math.round((overdueInvoices / totalInvoices) * 100)
         : 0;
 
-    // Средняя арендная ставка за м²
     const avgResult = await this.prisma.contract.aggregate({
       where: { tenantId, status: 'active' },
       _avg: { monthlyRent: true },
     });
 
-    return {
+    const result: DashboardData = {
       totalProperties,
       totalUnits,
       occupancyRate,
@@ -67,9 +74,17 @@ export class AnalyticsService {
       pendingApplications,
       avgRentPerSqm: Number(avgResult._avg.monthlyRent) || 0,
     };
+
+    // Кэшируем на 15 минут
+    await this.redis.set(cacheKey, result, 900);
+    return result;
   }
 
   async getRevenue(tenantId: number, months: number = 6) {
+    const cacheKey = `analytics:revenue:${tenantId}:${months}`;
+    const cached = await this.redis.get<any>(cacheKey);
+    if (cached) return cached;
+
     const result: { month: string; revenue: number }[] = [];
 
     for (let i = months - 1; i >= 0; i--) {
@@ -93,6 +108,7 @@ export class AnalyticsService {
       });
     }
 
+    await this.redis.set(cacheKey, result, 900);
     return result;
   }
 
