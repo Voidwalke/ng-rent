@@ -25,6 +25,12 @@ export class FilterUnitDto {
   @IsOptional()
   @Transform(({ value }) => parseFloat(value))
   @IsNumber()
+  maxArea?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(({ value }) => parseFloat(value))
+  @IsNumber()
   maxPrice?: number;
 
   @ApiPropertyOptional()
@@ -32,4 +38,16 @@ export class FilterUnitDto {
   @Transform(({ value }) => parseInt(value))
   @IsInt()
   floor?: number;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Transform(({ value }) => parseInt(value))
+  @IsInt()
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  @Transform(({ value }) => parseInt(value))
+  @IsInt()
+  limit?: number;
 }

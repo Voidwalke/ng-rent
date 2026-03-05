@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   ParseIntPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -22,15 +23,31 @@ export class PropertiesController {
   constructor(private readonly propertiesService: PropertiesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Список объектов' })
-  findAll(@CurrentUser('tenantId') tenantId: number) {
-    return this.propertiesService.findAll(tenantId);
+  @ApiOperation({ summary: 'Список объектов с фильтрами' })
+  findAll(
+    @CurrentUser('tenantId') tenantId: number,
+    @Query('type') type?: string,
+    @Query('city') city?: string,
+    @Query('isPublished') isPublished?: string,
+  ) {
+    return this.propertiesService.findAll(tenantId, {
+      type,
+      city,
+      isPublished:
+        isPublished !== undefined ? isPublished === 'true' : undefined,
+    });
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Получить объект с помещениями' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.propertiesService.findOne(id);
+  }
+
+  @Get(':id/stats')
+  @ApiOperation({ summary: 'Статистика занятости объекта' })
+  getStats(@Param('id', ParseIntPipe) id: number) {
+    return this.propertiesService.getStats(id);
   }
 
   @Post()
@@ -51,6 +68,20 @@ export class PropertiesController {
     @Body() dto: UpdatePropertyDto,
   ) {
     return this.propertiesService.update(id, dto);
+  }
+
+  @Patch(':id/publish')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Опубликовать объект' })
+  publish(@Param('id', ParseIntPipe) id: number) {
+    return this.propertiesService.publish(id);
+  }
+
+  @Patch(':id/unpublish')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Снять объект с публикации' })
+  unpublish(@Param('id', ParseIntPipe) id: number) {
+    return this.propertiesService.unpublish(id);
   }
 
   @Delete(':id')

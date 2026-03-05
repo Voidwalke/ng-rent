@@ -14,7 +14,7 @@ import { UnitsService } from './units.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { FilterUnitDto } from './dto/filter-unit.dto';
-import { CurrentUser, Roles, Public } from '../common/decorators';
+import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
 
 @ApiTags('Помещения')
@@ -24,7 +24,7 @@ export class UnitsController {
 
   @Get()
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Список помещений с фильтрами' })
+  @ApiOperation({ summary: 'Список помещений с фильтрами и пагинацией' })
   findAll(
     @CurrentUser('tenantId') tenantId: number,
     @Query() filter: FilterUnitDto,
@@ -56,6 +56,22 @@ export class UnitsController {
   @ApiOperation({ summary: 'Обновить помещение' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUnitDto) {
     return this.unitsService.update(id, dto);
+  }
+
+  @Patch(':id/maintenance')
+  @ApiBearerAuth()
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Перевести на обслуживание' })
+  setMaintenance(@Param('id', ParseIntPipe) id: number) {
+    return this.unitsService.setMaintenance(id);
+  }
+
+  @Patch(':id/available')
+  @ApiBearerAuth()
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Вернуть из обслуживания' })
+  setAvailable(@Param('id', ParseIntPipe) id: number) {
+    return this.unitsService.setAvailable(id);
   }
 
   @Delete(':id')
