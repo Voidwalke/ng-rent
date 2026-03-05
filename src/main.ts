@@ -1,23 +1,24 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
+  app.useLogger(app.get(Logger));
   app.setGlobalPrefix('api');
   app.enableCors({
     origin: process.env.CORS_ORIGIN || '*',
     credentials: true,
   });
 
-  // Безопасность
   app.use(helmet());
 
-  // Валидация DTO
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -27,8 +28,8 @@ async function bootstrap() {
   );
 
   app.useGlobalFilters(new AllExceptionsFilter());
+  app.useGlobalInterceptors(new TransformInterceptor());
 
-  // Swagger
   const config = new DocumentBuilder()
     .setTitle('NG RENT API')
     .setDescription('API платформы аренды коммерческой недвижимости')
@@ -41,7 +42,6 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  console.log(`Сервер запущен на порту ${port}`);
 }
 
 bootstrap();

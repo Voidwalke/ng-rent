@@ -36,8 +36,7 @@ export class AuthService {
     private readonly redis: RedisService,
   ) {}
 
-  // ─── Регистрация ──────────────────────────────────────────
-
+  /** Регистрирует нового тенанта и администратора */
   async register(dto: RegisterDto) {
     const exists = await this.prisma.tenant.findUnique({
       where: { slug: dto.slug },
@@ -71,7 +70,6 @@ export class AuthService {
       return { tenant, user };
     });
 
-    // Отправляем email verification
     await this.sendVerificationEmail(result.user.id, result.user.email);
 
     const tokens = await this.generateTokens({
@@ -92,8 +90,7 @@ export class AuthService {
     };
   }
 
-  // ─── Логин ────────────────────────────────────────────────
-
+  /** Аутентифицирует пользователя по email и паролю */
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -104,18 +101,16 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Неверный email или пароль');
 
-    // Проверяем блокировку тенанта
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: user.tenantId },
     });
     if (tenant && !tenant.isActive)
       throw new UnauthorizedException('Организация заблокирована');
 
-    // 2FA включена — отправляем OTP
     if (user.is2faEnabled) {
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
       const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
-      await this.redis.set(`otp:${user.id}`, otpHash, 300); // 5 мин
+      await this.redis.set(`otp:${user.id}`, otpHash, 300);
 
       const tempToken = await this.jwt.signAsync(
         { userId: user.id, type: '2fa' },
@@ -151,8 +146,7 @@ export class AuthService {
     };
   }
 
-  // ─── 2FA ──────────────────────────────────────────────────
-
+  /** Подтверждает вход по одноразовому коду 2FA */
   async verify2fa(dto: VerifyOtpDto) {
     let payload: any;
     try {
@@ -205,6 +199,7 @@ export class AuthService {
     };
   }
 
+  /** Отправляет код 2FA на email */
   async send2faCode(userId: number) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException();
@@ -217,6 +212,7 @@ export class AuthService {
     return { message: 'Код отправлен на email' };
   }
 
+  /** Включает двухфакторную аутентификацию */
   async enable2fa(userId: number) {
     await this.prisma.user.update({
       where: { id: userId },
@@ -225,6 +221,7 @@ export class AuthService {
     return { message: '2FA включена' };
   }
 
+  /** Отключает двухфакторную аутентификацию */
   async disable2fa(userId: number, code: string) {
     const otpHash = await this.redis.get<string>(`otp:${userId}`);
     const inputHash = crypto.createHash('sha256').update(code).digest('hex');
@@ -239,15 +236,15 @@ export class AuthService {
     return { message: '2FA отключена' };
   }
 
-  // ─── Email verification ───────────────────────────────────
-
+  /** Отправляет письмо для подтверждения email */
   async sendVerificationEmail(userId: number, email: string) {
     const token = crypto.randomBytes(32).toString('hex');
-    await this.redis.set(`email-verify:${token}`, userId, 604800); // 7 дней
+    await this.redis.set(`email-verify:${token}`, userId, 604800);
     // TODO: отправка email через MailerService
     this.logger.log(`Email verification для ${email}: ${token}`);
   }
 
+  /** Подтверждает email по токену из письма */
   async verifyEmail(dto: VerifyEmailDto) {
     const userId = await this.redis.get<number>(`email-verify:${dto.token}`);
     if (!userId)
@@ -262,8 +259,7 @@ export class AuthService {
     return { message: 'Email подтверждён' };
   }
 
-  // ─── Logout / Refresh ─────────────────────────────────────
-
+  /** Завершает сессию пользователя */
   async logout(userId: number, refreshToken?: string) {
     if (refreshToken) {
       await this.redis.del(`session:${userId}:${this.hashToken(refreshToken)}`);
@@ -275,17 +271,17 @@ export class AuthService {
     return { message: 'Выход выполнен' };
   }
 
+  /** Обновляет пару access/refresh токенов */
   async refresh(dto: RefreshDto) {
     try {
       const payload = this.jwt.verify<JwtPayload>(dto.refreshToken, {
         secret: this.config.get('JWT_SECRET'),
       });
 
-      // Проверяем сессию в Redis
       const sessionKey = `session:${payload.userId}:${this.hashToken(dto.refreshToken)}`;
       const session = await this.redis.get<any>(sessionKey);
       if (!session) {
-        // Fallback на проверку в БД
+        // Фоллбэк — проверка в БД
         const user = await this.prisma.user.findUnique({
           where: { id: payload.userId },
         });
@@ -294,7 +290,7 @@ export class AuthService {
         }
       }
 
-      // Ротация: удаляем старый, создаём новый
+      // Ротация токенов: удаляем старый, создаём новый
       await this.redis.del(sessionKey);
 
       const tokens = await this.generateTokens({
@@ -314,8 +310,7 @@ export class AuthService {
     }
   }
 
-  // ─── Forgot / Reset password ──────────────────────────────
-
+  /** Инициирует сброс пароля по email */
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -325,12 +320,13 @@ export class AuthService {
     }
 
     const token = crypto.randomBytes(32).toString('hex');
-    await this.redis.set(`reset:${token}`, user.id, 3600); // 1 час
+    await this.redis.set(`reset:${token}`, user.id, 3600);
 
     this.logger.log(`Reset token для ${user.email}: ${token}`);
     return { message: 'Если email существует, ссылка для сброса отправлена' };
   }
 
+  /** Устанавливает новый пароль по токену сброса */
   async resetPassword(dto: ResetPasswordDto) {
     const userId = await this.redis.get<number>(`reset:${dto.token}`);
     if (!userId)
@@ -342,15 +338,13 @@ export class AuthService {
       data: { passwordHash, refreshToken: null },
     });
 
-    // Удаляем токен и все сессии
     await this.redis.del(`reset:${dto.token}`);
     await this.redis.delByPattern(`session:${userId}:*`);
 
     return { message: 'Пароль успешно изменён' };
   }
 
-  // ─── Change password ──────────────────────────────────────
-
+  /** Меняет пароль авторизованного пользователя */
   async changePassword(userId: number, dto: ChangePasswordDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const valid = await bcrypt.compare(dto.currentPassword, user!.passwordHash);
@@ -364,8 +358,7 @@ export class AuthService {
     return { message: 'Пароль изменён' };
   }
 
-  // ─── Invite / Accept invite ───────────────────────────────
-
+  /** Отправляет приглашение пользователю по email */
   async inviteUser(tenantId: number, dto: InviteUserDto) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -378,12 +371,13 @@ export class AuthService {
       `invite:${token}`,
       { tenantId, email: dto.email, role: dto.role, fullName: dto.fullName },
       259200,
-    ); // 72 часа
+    );
 
     this.logger.log(`Invite для ${dto.email}: ${token}`);
     return { message: 'Приглашение отправлено', email: dto.email };
   }
 
+  /** Принимает приглашение и создаёт пользователя */
   async acceptInvite(dto: AcceptInviteDto) {
     const invite = await this.redis.get<any>(`invite:${dto.token}`);
     if (!invite)
@@ -421,35 +415,33 @@ export class AuthService {
     };
   }
 
-  // ─── Сессии ───────────────────────────────────────────────
-
+  /** Возвращает список активных сессий пользователя */
   async getSessions(userId: number) {
     const keys = await this.redis.get<any>(`session-list:${userId}`);
     return keys || [];
   }
 
+  /** Отзывает конкретную сессию */
   async revokeSession(userId: number, sessionId: string) {
     await this.redis.del(`session:${userId}:${sessionId}`);
-    // Обновляем список сессий
     const sessions = await this.getSessions(userId);
     const updated = sessions.filter((s: any) => s.id !== sessionId);
     await this.redis.set(`session-list:${userId}`, updated, 604800);
     return { message: 'Сессия отозвана' };
   }
 
+  /** Отзывает все сессии пользователя */
   async revokeAllSessions(userId: number, currentToken?: string) {
     await this.redis.delByPattern(`session:${userId}:*`);
     await this.redis.del(`session-list:${userId}`);
 
-    // Если передан текущий токен — пересоздаём его сессию
     if (currentToken) {
       await this.saveSession(userId, currentToken, 'revoke-all');
     }
     return { message: 'Все сессии отозваны' };
   }
 
-  // ─── Профиль ──────────────────────────────────────────────
-
+  /** Возвращает профиль пользователя */
   async getProfile(userId: number) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -469,8 +461,6 @@ export class AuthService {
     if (!user) throw new UnauthorizedException();
     return user;
   }
-
-  // ─── Вспомогательные ─────────────────────────────────────
 
   private async generateTokens(payload: JwtPayload) {
     const [accessToken, refreshToken] = await Promise.all([
@@ -496,17 +486,14 @@ export class AuthService {
       createdAt: new Date().toISOString(),
     };
 
-    await this.redis.set(`session:${userId}:${hash}`, sessionData, 604800); // 7 дней
+    await this.redis.set(`session:${userId}:${hash}`, sessionData, 604800);
 
-    // Список сессий для GET /sessions
     const sessions =
       (await this.redis.get<any[]>(`session-list:${userId}`)) || [];
     sessions.push(sessionData);
-    // Оставляем только последние 10
     const trimmed = sessions.slice(-10);
     await this.redis.set(`session-list:${userId}`, trimmed, 604800);
 
-    // Сохраняем в БД как fallback
     await this.prisma.user.update({
       where: { id: userId },
       data: { refreshToken },

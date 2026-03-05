@@ -21,6 +21,7 @@ export class AnalyticsService {
     private readonly redis: RedisService,
   ) {}
 
+  /** Возвращает сводку показателей для дашборда */
   async getDashboard(tenantId: number): Promise<DashboardData> {
     const cacheKey = `analytics:dashboard:${tenantId}`;
     const cached = await this.redis.get<DashboardData>(cacheKey);
@@ -75,11 +76,11 @@ export class AnalyticsService {
       avgRentPerSqm: Number(avgResult._avg.monthlyRent) || 0,
     };
 
-    // Кэшируем на 15 минут
     await this.redis.set(cacheKey, result, 900);
     return result;
   }
 
+  /** Возвращает помесячную выручку за указанный период */
   async getRevenue(tenantId: number, months: number = 6) {
     const cacheKey = `analytics:revenue:${tenantId}:${months}`;
     const cached = await this.redis.get<any>(cacheKey);

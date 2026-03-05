@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class InvoicesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Возвращает список счетов тенанта с фильтрацией */
   async findAll(
     tenantId: number,
     filters?: { status?: string; contractId?: number },
@@ -31,6 +32,7 @@ export class InvoicesService {
     });
   }
 
+  /** Возвращает счёт по идентификатору */
   async findOne(id: number) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id },
@@ -48,7 +50,7 @@ export class InvoicesService {
     return invoice;
   }
 
-  // Подтверждение оплаты
+  /** Подтверждает оплату счёта */
   async pay(id: number, paidAmount?: number, paymentReference?: string) {
     const invoice = await this.findOne(id);
     if (invoice.status === 'paid') {
@@ -68,7 +70,7 @@ export class InvoicesService {
       },
     });
 
-    // Если был просрочен — проверяем нужно ли разблокировать СКУД
+    // При оплате просроченного счёта проверяем остальные просрочки по договору
     if (invoice.status === 'overdue') {
       const otherOverdue = await this.prisma.invoice.count({
         where: {
@@ -78,7 +80,6 @@ export class InvoicesService {
         },
       });
 
-      // Все просрочки оплачены — разблокируем
       if (otherOverdue === 0) {
         await this.prisma.accessCard.updateMany({
           where: {
@@ -99,7 +100,7 @@ export class InvoicesService {
     return updated;
   }
 
-  // Отмена счёта
+  /** Отменяет неоплаченный счёт */
   async cancel(id: number) {
     const invoice = await this.findOne(id);
     if (!['pending', 'overdue'].includes(invoice.status)) {
@@ -111,7 +112,7 @@ export class InvoicesService {
     });
   }
 
-  // Сводка по счетам
+  /** Возвращает агрегированную сводку по счетам */
   async getSummary(tenantId: number) {
     const [pending, overdue, paidThisMonth] = await Promise.all([
       this.prisma.invoice.aggregate({

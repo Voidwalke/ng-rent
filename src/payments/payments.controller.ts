@@ -27,6 +27,18 @@ export class PaymentsController {
     return this.paymentsService.createPayment(user.tenantId, invoiceId);
   }
 
+  @Post('invoice/:invoiceId/refund')
+  @ApiBearerAuth()
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Возврат платежа' })
+  refund(
+    @CurrentUser() user: any,
+    @Param('invoiceId', ParseIntPipe) invoiceId: number,
+    @Body('amount') amount?: number,
+  ) {
+    return this.paymentsService.refund(user.tenantId, invoiceId, amount);
+  }
+
   @Post('webhook/yookassa')
   @Public()
   @ApiOperation({ summary: 'Вебхук ЮKassa' })

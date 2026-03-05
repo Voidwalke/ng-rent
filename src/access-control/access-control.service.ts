@@ -10,6 +10,7 @@ export class AccessControlService {
     private readonly provider: IAccessControlProvider,
   ) {}
 
+  /** Возвращает список карт доступа с фильтрацией */
   async findAll(
     tenantId: number,
     filters?: { clientId?: number; contractId?: number; isActive?: boolean },
@@ -29,6 +30,7 @@ export class AccessControlService {
     });
   }
 
+  /** Возвращает карту доступа по идентификатору */
   async findOne(id: number) {
     const card = await this.prisma.accessCard.findUnique({
       where: { id },
@@ -38,6 +40,7 @@ export class AccessControlService {
     return card;
   }
 
+  /** Создаёт карту доступа и отправляет команду в СКУД */
   async create(
     tenantId: number,
     data: {
@@ -65,7 +68,6 @@ export class AccessControlService {
       },
     });
 
-    // Команда в СКУД
     await this.provider.grantAccess({
       cardNumber: data.cardNumber,
       zones: data.zones || [],
@@ -76,6 +78,7 @@ export class AccessControlService {
     return card;
   }
 
+  /** Блокирует карту доступа */
   async block(id: number, reason: string) {
     const card = await this.findOne(id);
 
@@ -90,6 +93,7 @@ export class AccessControlService {
     });
   }
 
+  /** Разблокирует карту доступа */
   async unblock(id: number) {
     const card = await this.findOne(id);
 
@@ -111,6 +115,7 @@ export class AccessControlService {
     });
   }
 
+  /** Удаляет карту доступа и отзывает доступ в СКУД */
   async remove(id: number) {
     const card = await this.findOne(id);
     await this.provider.revokeAccess({

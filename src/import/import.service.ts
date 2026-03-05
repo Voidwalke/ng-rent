@@ -12,7 +12,7 @@ export class ImportService {
 
   constructor(private prisma: PrismaService) {}
 
-  /** Загрузить файл и создать задачу импорта */
+  /** Создаёт задачу импорта из загруженного файла */
   async createJob(
     tenantId: number,
     userId: number,
@@ -37,8 +37,7 @@ export class ImportService {
       },
     });
 
-    // В реальном проекте: парсим файл через exceljs, валидируем строки
-    // Сейчас — заглушка для демонстрации
+    // TODO: парсинг файла через exceljs и валидация строк
     await this.prisma.importJob.update({
       where: { id: job.id },
       data: { status: 'preview', totalRows: 100 },
@@ -47,7 +46,7 @@ export class ImportService {
     return job;
   }
 
-  /** Подтвердить и выполнить импорт */
+  /** Подтверждает и выполняет импорт */
   async confirmImport(tenantId: number, importId: number) {
     const job = await this.prisma.importJob.findFirst({
       where: { id: importId, tenantId, status: 'preview' },
@@ -76,7 +75,7 @@ export class ImportService {
     return { status: 'completed', imported: job.totalRows };
   }
 
-  /** Скачать шаблон */
+  /** Возвращает заголовки шаблона для указанного типа */
   getTemplate(type: string) {
     const headers: Record<string, string[]> = {
       units: [
@@ -102,7 +101,7 @@ export class ImportService {
     return { type, headers: headers[type] || [] };
   }
 
-  /** Список задач импорта */
+  /** Возвращает список задач импорта тенанта */
   async findAll(tenantId: number) {
     return this.prisma.importJob.findMany({
       where: { tenantId },

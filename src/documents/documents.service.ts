@@ -28,7 +28,6 @@ export class DocumentsService {
     this.ensureBucket();
   }
 
-  /** Проверяет наличие бакета, создаёт если нет */
   private async ensureBucket() {
     try {
       const exists = await this.minioClient.bucketExists(this.bucket);
@@ -50,7 +49,6 @@ export class DocumentsService {
     entityId: number,
     category = 'other',
   ) {
-    // Уникальное имя чтобы не было коллизий
     const ext = path.extname(file.originalname);
     const hash = crypto.randomBytes(8).toString('hex');
     const objectName = `${tenantId}/${entityType}/${entityId}/${hash}${ext}`;
@@ -78,7 +76,7 @@ export class DocumentsService {
     });
   }
 
-  /** Список документов по сущности */
+  /** Возвращает документы по сущности */
   async findByEntity(tenantId: number, entityType: string, entityId: number) {
     return this.prisma.document.findMany({
       where: { tenantId, entityType, entityId },
@@ -86,7 +84,7 @@ export class DocumentsService {
     });
   }
 
-  /** Все документы тенанта с пагинацией */
+  /** Возвращает все документы тенанта с пагинацией */
   async findAll(tenantId: number, page = 1, limit = 20, category?: string) {
     const where: any = { tenantId };
     if (category) where.category = category;
@@ -112,7 +110,6 @@ export class DocumentsService {
     });
     if (!doc) throw new NotFoundException('Документ не найден');
 
-    // URL действителен 1 час
     return this.minioClient.presignedGetObject(this.bucket, doc.fileUrl, 3600);
   }
 

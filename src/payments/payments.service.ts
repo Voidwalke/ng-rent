@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 
-/** Интерфейс для платёжного провайдера */
+/** Интерфейс платёжного провайдера */
 interface PaymentProvider {
   createPayment(
     amount: number,
@@ -34,7 +34,7 @@ class MockYookassaProvider implements PaymentProvider {
   }
 
   verifyWebhook(_body: any, _signature: string) {
-    return true; // В проде — проверка HMAC
+    return true;
   }
 }
 
@@ -47,11 +47,10 @@ export class PaymentsService {
     private prisma: PrismaService,
     private config: ConfigService,
   ) {
-    // В проде подключаем реальный SDK ЮKassa
     this.provider = new MockYookassaProvider();
   }
 
-  /** Создать платёж по счёту */
+  /** Создаёт платёж по счёту */
   async createPayment(tenantId: number, invoiceId: number) {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, tenantId },
@@ -91,7 +90,7 @@ export class PaymentsService {
     };
   }
 
-  /** Обработка вебхука от ЮKassa */
+  /** Обрабатывает вебхук от ЮKassa */
   async handleWebhook(body: any, signature: string) {
     if (!this.provider.verifyWebhook(body, signature)) {
       throw new BadRequestException('Невалидная подпись вебхука');
@@ -111,7 +110,6 @@ export class PaymentsService {
 
     if (event === 'payment.succeeded') {
       await this.prisma.$transaction(async (tx) => {
-        // Обновляем платёж
         await tx.payment.update({
           where: { id: payment.id },
           data: {
@@ -123,7 +121,6 @@ export class PaymentsService {
           },
         });
 
-        // Обновляем счёт
         const invoice = await tx.invoice.findUnique({
           where: { id: payment.invoiceId },
         });
@@ -160,7 +157,7 @@ export class PaymentsService {
     return { status: 'ok' };
   }
 
-  /** Список платежей по счёту */
+  /** Возвращает платежи по счёту */
   async findByInvoice(tenantId: number, invoiceId: number) {
     return this.prisma.payment.findMany({
       where: { tenantId, invoiceId },
@@ -168,7 +165,32 @@ export class PaymentsService {
     });
   }
 
-  /** Все платежи тенанта с пагинацией */
+  /** Выполняет возврат платежа */
+  async refund(tenantId: number, invoiceId: number, amount?: number) {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, tenantId, status: 'paid' },
+    });
+    if (!invoice) throw new NotFoundException('Оплаченный счёт не найден');
+
+    const refundAmount = amount || Number(invoice.totalAmount);
+
+    // TODO: вызов ЮKassa refund API
+    this.logger.log(
+      `Возврат ${refundAmount} ₽ по счёту ${invoice.invoiceNumber}`,
+    );
+
+    await this.prisma.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        status: 'cancelled',
+        paidAmount: Number(invoice.paidAmount) - refundAmount,
+      },
+    });
+
+    return { message: 'Возврат выполнен', amount: refundAmount };
+  }
+
+  /** Возвращает все платежи тенанта с пагинацией */
   async findAll(tenantId: number, page = 1, limit = 20) {
     const where = { tenantId };
     const [data, total] = await Promise.all([

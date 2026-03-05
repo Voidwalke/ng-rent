@@ -1,4 +1,4 @@
-// Интерфейс СКУД-провайдера (Strategy pattern)
+/** Интерфейс СКУД-провайдера (паттерн Стратегия) */
 export interface IAccessControlProvider {
   grantAccess(params: {
     cardNumber: string;
@@ -12,7 +12,7 @@ export interface IAccessControlProvider {
   getCardStatus(cardNumber: string): Promise<'active' | 'blocked' | 'unknown'>;
 }
 
-// Mock-реализация для разработки
+/** Мок-реализация СКУД для разработки */
 export class MockAccessControlProvider implements IAccessControlProvider {
   async grantAccess(params: { cardNumber: string; zones: string[] }) {
     console.log(

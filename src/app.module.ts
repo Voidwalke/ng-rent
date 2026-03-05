@@ -1,7 +1,8 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { LoggerModule } from 'nestjs-pino';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -21,15 +22,38 @@ import { AccessControlModule } from './access-control/access-control.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { SupportModule } from './support/support.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
+import { ImportModule } from './import/import.module';
+import { PlatformAnalyticsModule } from './platform-analytics/platform-analytics.module';
+import { TenantPortalModule } from './tenant-portal/tenant-portal.module';
 import { HealthModule } from './health/health.module';
 import { JwtAuthGuard } from './common/guards';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    LoggerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        pinoHttp: {
+          level: config.get('NODE_ENV') === 'production' ? 'info' : 'debug',
+          transport:
+            config.get('NODE_ENV') !== 'production'
+              ? { target: 'pino-pretty', options: { colorize: true } }
+              : undefined,
+          redact: [
+            'req.headers.authorization',
+            'req.body.password',
+            'req.body.newPassword',
+          ],
+        },
+      }),
+    }),
     ScheduleModule.forRoot(),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 60 }]),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     PrismaModule,
     RedisModule,
     AuthModule,
@@ -48,6 +72,10 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
     DocumentsModule,
     SubscriptionsModule,
     SupportModule,
+    OnboardingModule,
+    ImportModule,
+    PlatformAnalyticsModule,
+    TenantPortalModule,
     HealthModule,
   ],
   providers: [
@@ -57,6 +85,7 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
     consumer.apply(TenantMiddleware).forRoutes('*');
   }
 }

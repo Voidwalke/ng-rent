@@ -2,19 +2,19 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 const ONBOARDING_STEPS = [
-  'company_info', // Заполнить реквизиты
-  'first_property', // Создать первый объект
-  'first_units', // Добавить помещения
-  'invite_team', // Пригласить менеджера
-  'publish', // Опубликовать объект
-  'setup_payment', // Привязать карту
+  'company_info',
+  'first_property',
+  'first_units',
+  'invite_team',
+  'publish',
+  'setup_payment',
 ];
 
 @Injectable()
 export class OnboardingService {
   constructor(private prisma: PrismaService) {}
 
-  /** Текущий прогресс онбординга */
+  /** Возвращает текущий прогресс онбординга */
   async getProgress(tenantId: number) {
     let progress = await this.prisma.onboardingProgress.findFirst({
       where: { tenantId },
@@ -39,7 +39,7 @@ export class OnboardingService {
     };
   }
 
-  /** Отметить шаг как пройденный */
+  /** Отмечает шаг онбординга как пройденный */
   async completeStep(tenantId: number, step: string) {
     if (!ONBOARDING_STEPS.includes(step)) {
       throw new NotFoundException(`Неизвестный шаг: ${step}`);
@@ -67,7 +67,7 @@ export class OnboardingService {
     });
   }
 
-  /** Пропустить онбординг */
+  /** Пропускает онбординг целиком */
   async skip(tenantId: number) {
     const progress = await this.prisma.onboardingProgress.findFirst({
       where: { tenantId },

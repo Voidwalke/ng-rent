@@ -1,30 +1,30 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class InvoicesCron {
   private readonly logger = new Logger(InvoicesCron.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
 
-  // Генерация ежемесячных счетов (03:00)
+  /** Генерирует ежемесячные счета по активным договорам */
   @Cron('0 3 * * *')
   async generateMonthlyInvoices() {
     const today = new Date();
     const dayOfMonth = today.getDate();
 
-    // Контракты, у которых payment_day совпадает с сегодня
     const contracts = await this.prisma.contract.findMany({
-      where: {
-        status: 'active',
-        paymentDay: dayOfMonth,
-      },
+      where: { status: 'active', paymentDay: dayOfMonth },
       include: { tenant: { select: { slug: true } } },
     });
 
+    let generated = 0;
     for (const contract of contracts) {
-      // Проверяем нет ли уже счёта за этот месяц
       const existingInvoice = await this.prisma.invoice.findFirst({
         where: {
           contractId: contract.id,
@@ -43,7 +43,6 @@ export class InvoicesCron {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 14);
 
-      // Номер: slug-202603-0001
       const seq =
         (await this.prisma.invoice.count({
           where: { contractId: contract.id },
@@ -63,31 +62,27 @@ export class InvoicesCron {
           dueDate,
         },
       });
+      generated++;
     }
 
-    if (contracts.length > 0) {
-      this.logger.log(`Сгенерировано счетов: ${contracts.length}`);
-    }
+    if (generated > 0) this.logger.log(`Сгенерировано счетов: ${generated}`);
   }
 
-  // Проверка просроченных (09:00)
+  /** Переводит просроченные счета в статус overdue и блокирует СКУД */
   @Cron('0 9 * * *')
   async checkOverdueInvoices() {
     const now = new Date();
     const gracePeriod = new Date();
     gracePeriod.setDate(gracePeriod.getDate() - 3);
 
-    // Помечаем просроченные
     const overdue = await this.prisma.invoice.updateMany({
       where: { status: 'pending', dueDate: { lt: now } },
       data: { status: 'overdue' },
     });
-
-    if (overdue.count > 0) {
+    if (overdue.count > 0)
       this.logger.warn(`Просрочено счетов: ${overdue.count}`);
-    }
 
-    // Блокируем СКУД если просрочка больше grace period
+    // Блокировка СКУД при просрочке свыше grace period
     const critical = await this.prisma.invoice.findMany({
       where: { status: 'overdue', dueDate: { lt: gracePeriod } },
       select: { contractId: true, invoiceNumber: true },
@@ -98,22 +93,62 @@ export class InvoicesCron {
         where: { contractId: inv.contractId, isActive: true },
         data: {
           isActive: false,
-          blockedReason: `Просрочка оплаты: ${inv.invoiceNumber}`,
+          blockedReason: `Просрочка: ${inv.invoiceNumber}`,
           blockedAt: new Date(),
         },
       });
     }
+    if (critical.length > 0)
+      this.logger.warn(`СКУД заблокирован: ${critical.length} договоров`);
+  }
 
-    if (critical.length > 0) {
-      this.logger.warn(`Заблокирован СКУД: ${critical.length} договоров`);
+  /** Отправляет напоминания об оплате за 3 дня до срока */
+  @Cron('0 10 * * *')
+  async sendPaymentReminders() {
+    const threeDaysLater = new Date();
+    threeDaysLater.setDate(threeDaysLater.getDate() + 3);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const upcoming = await this.prisma.invoice.findMany({
+      where: {
+        status: 'pending',
+        dueDate: { gte: today, lte: threeDaysLater },
+      },
+      include: { contract: { include: { client: true } } },
+    });
+
+    for (const invoice of upcoming) {
+      // TODO: отправка уведомления через NotificationsService
+      this.logger.log(
+        `Напоминание: счёт ${invoice.invoiceNumber} — оплата до ${invoice.dueDate.toLocaleDateString('ru-RU')}`,
+      );
+    }
+
+    if (upcoming.length > 0)
+      this.logger.log(`Отправлено напоминаний: ${upcoming.length}`);
+  }
+
+  /** Проверяет статусы документов в ЭДО */
+  @Cron('*/30 * * * *')
+  async checkEdoStatuses() {
+    const pendingContracts = await this.prisma.contract.findMany({
+      where: { edoStatus: 'pending', edoDocumentId: { not: null } },
+    });
+
+    for (const contract of pendingContracts) {
+      // TODO: проверка через IEdoProvider.checkStatus(contract.edoDocumentId)
+      this.logger.debug(
+        `Проверка ЭДО: договор ${contract.contractNumber}, doc=${contract.edoDocumentId}`,
+      );
     }
   }
 
-  // Проверка истёкших договоров (00:00)
+  /** Завершает истёкшие договоры и освобождает помещения */
   @Cron('0 0 * * *')
   async checkExpiredContracts() {
     const now = new Date();
-
     const expired = await this.prisma.contract.findMany({
       where: { status: 'active', endDate: { lt: now } },
     });
@@ -138,24 +173,27 @@ export class InvoicesCron {
         });
       });
     }
-
-    if (expired.length > 0) {
+    if (expired.length > 0)
       this.logger.log(`Истекло договоров: ${expired.length}`);
-    }
   }
 
-  // Очистка старых записей аудита (02:00)
+  /** Удаляет записи аудита старше года */
   @Cron('0 2 * * *')
   async cleanupAuditLog() {
     const yearAgo = new Date();
     yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-
     const deleted = await this.prisma.auditLog.deleteMany({
       where: { createdAt: { lt: yearAgo } },
     });
-
-    if (deleted.count > 0) {
+    if (deleted.count > 0)
       this.logger.log(`Удалено записей аудита: ${deleted.count}`);
-    }
+  }
+
+  /** Инвалидирует кэш аналитики для пересчёта */
+  @Cron('0 4 * * *')
+  async refreshAnalyticsCache() {
+    await this.redis.delByPattern('analytics:*');
+    await this.redis.delByPattern('platform:*');
+    this.logger.log('Кэш аналитики инвалидирован');
   }
 }

@@ -25,14 +25,11 @@ export class HealthController {
   @ApiOperation({ summary: 'Проверка состояния сервиса' })
   check() {
     return this.health.check([
-      // БД доступна
       async () => {
         await this.prisma.$queryRaw`SELECT 1`;
         return { database: { status: 'up' } };
       },
-      // Память не превышает 512MB
       () => this.memory.checkHeap('memory', 512 * 1024 * 1024),
-      // Диск не заполнен более 90%
       () =>
         this.disk.checkStorage('disk', { path: '/', thresholdPercent: 0.9 }),
     ]);
@@ -40,7 +37,7 @@ export class HealthController {
 
   @Public()
   @Get('ready')
-  @ApiOperation({ summary: 'Readiness probe' })
+  @ApiOperation({ summary: 'Проверка готовности сервиса' })
   async ready() {
     try {
       await this.prisma.$queryRaw`SELECT 1`;
