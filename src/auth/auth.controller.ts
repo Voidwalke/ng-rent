@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import {
@@ -9,6 +9,9 @@ import {
   ResetPasswordDto,
   InviteUserDto,
   ChangePasswordDto,
+  VerifyOtpDto,
+  AcceptInviteDto,
+  VerifyEmailDto,
 } from './dto';
 import { Public, CurrentUser, Roles } from '../common/decorators';
 
@@ -19,28 +22,59 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  @ApiOperation({ summary: 'Регистрация новой организации' })
+  @ApiOperation({ summary: 'Регистрация организации' })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   @Public()
   @Post('login')
-  @ApiOperation({ summary: 'Вход в систему' })
+  @ApiOperation({ summary: 'Вход (при 2FA — вернёт tempToken)' })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Public()
+  @Post('2fa/verify')
+  @ApiOperation({ summary: 'Подтверждение 2FA кода' })
+  verify2fa(@Body() dto: VerifyOtpDto) {
+    return this.authService.verify2fa(dto);
+  }
+
+  @Post('2fa/send')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Отправить OTP на email' })
+  send2fa(@CurrentUser() user: any) {
+    return this.authService.send2faCode(user.id);
+  }
+
+  @Post('2fa/enable')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Включить 2FA' })
+  enable2fa(@CurrentUser() user: any) {
+    return this.authService.enable2fa(user.id);
+  }
+
+  @Post('2fa/disable')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Отключить 2FA (требуется OTP)' })
+  disable2fa(@CurrentUser() user: any, @Body('code') code: string) {
+    return this.authService.disable2fa(user.id, code);
   }
 
   @Post('logout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Выход из системы' })
-  logout(@CurrentUser() user: any) {
-    return this.authService.logout(user.id);
+  logout(
+    @CurrentUser() user: any,
+    @Body('refreshToken') refreshToken?: string,
+  ) {
+    return this.authService.logout(user.id, refreshToken);
   }
 
   @Public()
   @Post('refresh')
-  @ApiOperation({ summary: 'Обновление access token' })
+  @ApiOperation({ summary: 'Обновление токенов' })
   refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto);
   }
@@ -59,6 +93,20 @@ export class AuthController {
     return this.authService.resetPassword(dto);
   }
 
+  @Public()
+  @Post('verify-email')
+  @ApiOperation({ summary: 'Подтверждение email' })
+  verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto);
+  }
+
+  @Public()
+  @Post('accept-invite')
+  @ApiOperation({ summary: 'Принять приглашение и создать аккаунт' })
+  acceptInvite(@Body() dto: AcceptInviteDto) {
+    return this.authService.acceptInvite(dto);
+  }
+
   @Post('change-password')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Смена пароля' })
@@ -69,7 +117,7 @@ export class AuthController {
   @Post('invite')
   @ApiBearerAuth()
   @Roles('admin')
-  @ApiOperation({ summary: 'Приглашение пользователя в организацию' })
+  @ApiOperation({ summary: 'Приглашение пользователя' })
   invite(@CurrentUser() user: any, @Body() dto: InviteUserDto) {
     return this.authService.inviteUser(user.tenantId, dto);
   }
@@ -79,5 +127,26 @@ export class AuthController {
   @ApiOperation({ summary: 'Профиль текущего пользователя' })
   getProfile(@CurrentUser() user: any) {
     return this.authService.getProfile(user.id);
+  }
+
+  @Get('sessions')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Список активных сессий' })
+  getSessions(@CurrentUser() user: any) {
+    return this.authService.getSessions(user.id);
+  }
+
+  @Delete('sessions/:id')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Отозвать конкретную сессию' })
+  revokeSession(@CurrentUser() user: any, @Param('id') sessionId: string) {
+    return this.authService.revokeSession(user.id, sessionId);
+  }
+
+  @Delete('sessions')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Отозвать все сессии кроме текущей' })
+  revokeAllSessions(@CurrentUser() user: any) {
+    return this.authService.revokeAllSessions(user.id);
   }
 }
