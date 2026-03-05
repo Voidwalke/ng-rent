@@ -14,11 +14,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(config: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: config.get<string>('JWT_SECRET'),
+      secretOrKey: config.get<string>('JWT_SECRET') || 'fallback-secret',
     });
   }
 
-  // Payload из токена попадает в request.user
   validate(payload: JwtPayload) {
     return {
       userId: payload.userId,

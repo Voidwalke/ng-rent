@@ -12,6 +12,7 @@ import { ClientsModule } from './clients/clients.module';
 import { ApplicationsModule } from './applications/applications.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { InvoicesModule } from './invoices/invoices.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { JwtAuthGuard } from './common/guards';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 
@@ -29,6 +30,7 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
     ApplicationsModule,
     ContractsModule,
     InvoicesModule,
+    AnalyticsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
