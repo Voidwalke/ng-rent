@@ -1,5 +1,10 @@
 import { Controller, Post, Get, Delete, Body, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import {
   RegisterDto,
@@ -23,6 +28,11 @@ export class AuthController {
   @Public()
   @Post('register')
   @ApiOperation({ summary: 'Регистрация организации' })
+  @ApiResponse({
+    status: 201,
+    description: 'Организация создана, возвращены токены',
+  })
+  @ApiResponse({ status: 409, description: 'Email или slug уже заняты' })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
@@ -30,6 +40,11 @@ export class AuthController {
   @Public()
   @Post('login')
   @ApiOperation({ summary: 'Вход (при 2FA — вернёт tempToken)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Токены или requires2fa + tempToken',
+  })
+  @ApiResponse({ status: 401, description: 'Неверный email или пароль' })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
@@ -75,6 +90,11 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @ApiOperation({ summary: 'Обновление токенов' })
+  @ApiResponse({
+    status: 200,
+    description: 'Новая пара accessToken + refreshToken',
+  })
+  @ApiResponse({ status: 401, description: 'Refresh token отозван или истёк' })
   refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto);
   }
@@ -125,6 +145,8 @@ export class AuthController {
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Профиль текущего пользователя' })
+  @ApiResponse({ status: 200, description: 'Данные пользователя' })
+  @ApiResponse({ status: 401, description: 'Не авторизован' })
   getProfile(@CurrentUser() user: any) {
     return this.authService.getProfile(user.id);
   }

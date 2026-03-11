@@ -9,7 +9,13 @@ import {
   Query,
   ParseIntPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { PropertiesService } from './properties.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
@@ -24,6 +30,14 @@ export class PropertiesController {
 
   @Get()
   @ApiOperation({ summary: 'Список объектов с фильтрами' })
+  @ApiResponse({ status: 200, description: 'Список объектов' })
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    enum: ['office', 'retail', 'warehouse', 'coworking'],
+  })
+  @ApiQuery({ name: 'city', required: false })
+  @ApiQuery({ name: 'isPublished', required: false, type: Boolean })
   findAll(
     @CurrentUser('tenantId') tenantId: number,
     @Query('type') type?: string,
@@ -53,6 +67,8 @@ export class PropertiesController {
   @Post()
   @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Создать объект' })
+  @ApiResponse({ status: 201, description: 'Объект создан' })
+  @ApiResponse({ status: 403, description: 'Недостаточно прав' })
   create(
     @CurrentUser('tenantId') tenantId: number,
     @Body() dto: CreatePropertyDto,
@@ -86,7 +102,9 @@ export class PropertiesController {
 
   @Delete(':id')
   @Roles(UserRole.admin)
-  @ApiOperation({ summary: 'Удалить объект' })
+  @ApiOperation({ summary: 'Удалить объект (soft delete)' })
+  @ApiResponse({ status: 200, description: 'Объект удалён' })
+  @ApiResponse({ status: 404, description: 'Объект не найден' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.propertiesService.remove(id);
   }
