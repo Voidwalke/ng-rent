@@ -27,6 +27,9 @@ import { ImportModule } from './import/import.module';
 import { PlatformAnalyticsModule } from './platform-analytics/platform-analytics.module';
 import { TenantPortalModule } from './tenant-portal/tenant-portal.module';
 import { HealthModule } from './health/health.module';
+import { MailerModule } from './mailer/mailer.module';
+import { QueueModule } from './queue/queue.module';
+import { Integration1CModule } from './integration-1c/integration-1c.module';
 import { JwtAuthGuard } from './common/guards';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -68,6 +71,8 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     PaymentsModule,
     AnalyticsModule,
     NotificationsModule,
+    MailerModule,
+    QueueModule,
     AccessControlModule,
     DocumentsModule,
     SubscriptionsModule,
@@ -76,6 +81,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     ImportModule,
     PlatformAnalyticsModule,
     TenantPortalModule,
+    Integration1CModule,
     HealthModule,
   ],
   providers: [
