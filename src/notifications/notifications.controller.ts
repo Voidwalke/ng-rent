@@ -23,37 +23,40 @@ export class NotificationsController {
 
   @Get()
   @ApiOperation({ summary: 'Список уведомлений' })
-  @ApiQuery({ name: 'isRead', required: false })
+  @ApiQuery({ name: 'is_read', required: false })
   @ApiQuery({ name: 'type', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
   findAll(
-    @CurrentUser('userId') userId: number,
-    @Query('isRead') isRead?: string,
+    @CurrentUser() user: any,
+    @Query('is_read') isRead?: string,
     @Query('type') type?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.notificationsService.findAll(userId, {
+    return this.notificationsService.findAll(user.id, {
       isRead: isRead !== undefined ? isRead === 'true' : undefined,
       type,
+      page: page ? +page : 1,
+      limit: limit ? +limit : 20,
     });
-  }
-
-  @Get('unread-count')
-  @ApiOperation({ summary: 'Количество непрочитанных' })
-  getUnreadCount(@CurrentUser('userId') userId: number) {
-    return this.notificationsService.getUnreadCount(userId);
   }
 
   @Patch(':id/read')
   @ApiOperation({ summary: 'Пометить как прочитанное' })
-  markAsRead(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser('userId') userId: number,
-  ) {
-    return this.notificationsService.markAsRead(id, userId);
+  markAsRead(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
+    return this.notificationsService.markAsRead(user.id, id);
   }
 
   @Patch('read-all')
   @ApiOperation({ summary: 'Пометить все как прочитанные' })
-  markAllRead(@CurrentUser('userId') userId: number) {
-    return this.notificationsService.markAllRead(userId);
+  markAllRead(@CurrentUser() user: any) {
+    return this.notificationsService.markAllRead(user.id);
+  }
+
+  @Get('unread-count')
+  @ApiOperation({ summary: 'Количество непрочитанных' })
+  getUnreadCount(@CurrentUser() user: any) {
+    return this.notificationsService.getUnreadCount(user.id);
   }
 }

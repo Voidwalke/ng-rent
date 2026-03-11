@@ -1,39 +1,61 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsGateway } from './notifications.gateway';
 
-export enum NotificationType {
-  APPLICATION_SUBMITTED = 'application_submitted',
-  APPLICATION_APPROVED = 'application_approved',
-  APPLICATION_REJECTED = 'application_rejected',
-  CONTRACT_SENT = 'contract_sent',
-  CONTRACT_SIGNED = 'contract_signed',
-  INVOICE_CREATED = 'invoice_created',
-  INVOICE_DUE_SOON = 'invoice_due_soon',
-  INVOICE_OVERDUE = 'invoice_overdue',
-  ACCESS_BLOCKED = 'access_blocked',
-  ACCESS_RESTORED = 'access_restored',
-}
+export type NotificationType =
+  | 'application_submitted'
+  | 'application_approved'
+  | 'application_rejected'
+  | 'contract_sent'
+  | 'contract_signed'
+  | 'invoice_created'
+  | 'invoice_due_soon'
+  | 'invoice_overdue'
+  | 'access_blocked'
+  | 'access_restored';
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private gateway: NotificationsGateway,
+  ) {}
 
-  // Создать уведомление (вызывается из других сервисов)
-  async create(params: {
+  /** Создаёт уведомление и отправляет через WebSocket */
+  async create(data: {
     tenantId: number;
     userId: number;
-    type: string;
+    type: NotificationType;
     title: string;
     message: string;
     metadata?: any;
   }) {
-    return this.prisma.notification.create({ data: params });
+    const notification = await this.prisma.notification.create({
+      data: {
+        tenantId: data.tenantId,
+        userId: data.userId,
+        type: data.type,
+        title: data.title,
+        message: data.message,
+        metadata: data.metadata || {},
+      },
+    });
+
+    this.gateway.sendToUser(data.userId, 'notification', {
+      id: notification.id,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      createdAt: notification.createdAt,
+    });
+
+    return notification;
   }
 
-  // Отправить уведомление всем менеджерам tenant
+  /** Отправляет уведомление всем менеджерам тенанта */
   async notifyManagers(
     tenantId: number,
-    type: string,
+    type: NotificationType,
     title: string,
     message: string,
     metadata?: any,
@@ -43,53 +65,73 @@ export class NotificationsService {
       select: { id: true },
     });
 
-    await this.prisma.notification.createMany({
-      data: managers.map((m) => ({
-        tenantId,
-        userId: m.id,
-        type,
-        title,
-        message,
-        metadata,
-      })),
-    });
+    const notifications = await Promise.all(
+      managers.map((m) =>
+        this.create({ tenantId, userId: m.id, type, title, message, metadata }),
+      ),
+    );
+
+    return notifications;
   }
 
-  async findAll(userId: number, filters?: { isRead?: boolean; type?: string }) {
+  /** Возвращает список уведомлений пользователя */
+  async findAll(
+    userId: number,
+    filters?: {
+      isRead?: boolean;
+      type?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
     const where: any = { userId };
-    if (filters?.isRead !== undefined) where.isRead = filters.isRead;
+    if (filters?.isRead !== undefined) {
+      where.readAt = filters.isRead ? { not: null } : null;
+    }
     if (filters?.type) where.type = filters.type;
 
-    return this.prisma.notification.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 20;
+
+    const [data, total] = await Promise.all([
+      this.prisma.notification.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.notification.count({ where }),
+    ]);
+
+    return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
-  async markAsRead(id: number, userId: number) {
-    const notification = await this.prisma.notification.findUnique({
-      where: { id },
+  /** Отмечает уведомление как прочитанное */
+  async markAsRead(userId: number, id: number) {
+    const notification = await this.prisma.notification.findFirst({
+      where: { id, userId },
     });
-    if (!notification || notification.userId !== userId) {
-      throw new NotFoundException('Уведомление не найдено');
-    }
+    if (!notification) throw new NotFoundException('Уведомление не найдено');
+
     return this.prisma.notification.update({
       where: { id },
-      data: { isRead: true, readAt: new Date() },
+      data: { readAt: new Date() },
     });
   }
 
+  /** Отмечает все уведомления как прочитанные */
   async markAllRead(userId: number) {
-    return this.prisma.notification.updateMany({
-      where: { userId, isRead: false },
-      data: { isRead: true, readAt: new Date() },
+    await this.prisma.notification.updateMany({
+      where: { userId, readAt: null },
+      data: { readAt: new Date() },
     });
+    return { message: 'Все уведомления прочитаны' };
   }
 
+  /** Возвращает количество непрочитанных уведомлений */
   async getUnreadCount(userId: number) {
     const count = await this.prisma.notification.count({
-      where: { userId, isRead: false },
+      where: { userId, readAt: null },
     });
     return { count };
   }
