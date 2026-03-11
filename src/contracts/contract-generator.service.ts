@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import * as Handlebars from 'handlebars';
+import puppeteer, { Browser } from 'puppeteer';
 
-/** Шаблон договора по умолчанию */
 const DEFAULT_TEMPLATE = `
 <html>
 <head><meta charset="utf-8"><style>
@@ -52,12 +52,30 @@ const DEFAULT_TEMPLATE = `
 `;
 
 @Injectable()
-export class ContractGeneratorService {
+export class ContractGeneratorService implements OnModuleDestroy {
   private readonly logger = new Logger(ContractGeneratorService.name);
   private template: Handlebars.TemplateDelegate;
+  private browser: Browser | null = null;
 
   constructor() {
     this.template = Handlebars.compile(DEFAULT_TEMPLATE);
+  }
+
+  async onModuleDestroy() {
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+    }
+  }
+
+  private async getBrowser(): Promise<Browser> {
+    if (!this.browser) {
+      this.browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
+      });
+    }
+    return this.browser;
   }
 
   /** Генерирует HTML договора из данных */
@@ -91,13 +109,28 @@ export class ContractGeneratorService {
     });
   }
 
-  /** Генерирует PDF (заглушка — в проде через Puppeteer) */
+  /** Генерирует PDF договора через Puppeteer */
   async generatePdf(data: any): Promise<Buffer> {
     const html = this.generateHtml(data);
-    // В проде: const browser = await puppeteer.launch(); page.setContent(html); page.pdf()
-    this.logger.log(
-      `PDF сгенерирован для договора ${data.contract.contractNumber}`,
-    );
-    return Buffer.from(html, 'utf-8');
+
+    const browser = await this.getBrowser();
+    const page = await browser.newPage();
+
+    try {
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '25mm' },
+        printBackground: true,
+      });
+
+      this.logger.log(
+        `PDF сгенерирован: договор ${data.contract.contractNumber}`,
+      );
+      return Buffer.from(pdfBuffer);
+    } finally {
+      await page.close();
+    }
   }
 }
