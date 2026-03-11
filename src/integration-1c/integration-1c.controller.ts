@@ -1,0 +1,76 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Headers,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
+import { Public } from '../common/decorators';
+import { Integration1CService } from './integration-1c.service';
+import { Integration1CProvider } from './integration-1c.provider';
+
+@ApiTags('Интеграция 1С')
+@Controller('integration/1c')
+export class Integration1CController {
+  private readonly webhookSecret: string;
+
+  constructor(
+    private service: Integration1CService,
+    private provider: Integration1CProvider,
+    private config: ConfigService,
+  ) {
+    this.webhookSecret = this.config.get('INTEGRATION_1C_WEBHOOK_SECRET', '');
+  }
+
+  private validateWebhookSecret(secret: string | undefined) {
+    if (!this.webhookSecret) return;
+    if (secret !== this.webhookSecret) {
+      throw new UnauthorizedException('Invalid webhook secret');
+    }
+  }
+
+  @Public()
+  @Post('webhook/payment')
+  @ApiOperation({ summary: 'Webhook: подтверждение оплаты из 1С' })
+  async paymentWebhook(
+    @Body()
+    body: {
+      invoiceNumber: string;
+      paidAmount: number;
+      paidAt: string;
+      paymentReference: string;
+    },
+    @Headers('x-webhook-secret') secret: string,
+  ) {
+    this.validateWebhookSecret(secret);
+    return this.service.handlePaymentWebhook(body);
+  }
+
+  @Public()
+  @Post('webhook/client')
+  @ApiOperation({ summary: 'Webhook: обновление контрагента из 1С' })
+  async clientWebhook(
+    @Body()
+    body: {
+      inn: string;
+      companyName?: string;
+      legalAddress?: string;
+      bankAccount?: string;
+      bik?: string;
+    },
+    @Headers('x-webhook-secret') secret: string,
+  ) {
+    this.validateWebhookSecret(secret);
+    return this.service.handleClientUpdate(body);
+  }
+
+  @Get('health')
+  @ApiOperation({ summary: 'Проверка доступности 1С' })
+  async health() {
+    const available = await this.provider.healthCheck();
+    return { status: available ? 'connected' : 'unavailable' };
+  }
+}
