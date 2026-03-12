@@ -11,7 +11,13 @@ import {
   Body,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
+  ApiOperation,
+} from '@nestjs/swagger';
 import { DocumentsService } from './documents.service';
 import { CurrentUser, Roles } from '../common/decorators';
 
@@ -22,6 +28,7 @@ export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
   @Post()
+  @ApiOperation({ summary: 'Загрузить документ' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -55,6 +62,7 @@ export class DocumentsController {
   }
 
   @Get()
+  @ApiOperation({ summary: 'Список документов' })
   findAll(
     @CurrentUser() user: any,
     @Query('page') page?: string,
@@ -70,6 +78,7 @@ export class DocumentsController {
   }
 
   @Get('entity/:entityType/:entityId')
+  @ApiOperation({ summary: 'Документы по сущности' })
   findByEntity(
     @CurrentUser() user: any,
     @Param('entityType') entityType: string,
@@ -83,6 +92,7 @@ export class DocumentsController {
   }
 
   @Get(':id/download')
+  @ApiOperation({ summary: 'Получить ссылку на скачивание' })
   getDownloadUrl(
     @CurrentUser() user: any,
     @Param('id', ParseIntPipe) id: number,
@@ -91,6 +101,7 @@ export class DocumentsController {
   }
 
   @Delete(':id')
+  @ApiOperation({ summary: 'Удалить документ' })
   @Roles('admin', 'manager')
   remove(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
     return this.documentsService.remove(user.tenantId, id);

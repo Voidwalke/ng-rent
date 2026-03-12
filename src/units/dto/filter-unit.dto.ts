@@ -4,7 +4,7 @@ import { Transform } from 'class-transformer';
 import { UnitStatus } from '@prisma/client';
 
 export class FilterUnitDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @Transform(({ value }) => parseInt(value))
   @IsInt()
@@ -15,25 +15,25 @@ export class FilterUnitDto {
   @IsEnum(UnitStatus)
   status?: UnitStatus;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 50 })
   @IsOptional()
   @Transform(({ value }) => parseFloat(value))
   @IsNumber()
   minArea?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 500 })
   @IsOptional()
   @Transform(({ value }) => parseFloat(value))
   @IsNumber()
   maxArea?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 5000 })
   @IsOptional()
   @Transform(({ value }) => parseFloat(value))
   @IsNumber()
   maxPrice?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 3 })
   @IsOptional()
   @Transform(({ value }) => parseInt(value))
   @IsInt()
