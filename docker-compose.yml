@@ -10,8 +10,24 @@ services:
     env_file:
       - .env
     depends_on:
-      postgres:
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
         condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: node dist/queue/queue.worker.js
+    env_file:
+      - .env
+    depends_on:
+      pgbouncer:
+        condition: service_started
       redis:
         condition: service_started
       rabbitmq:
@@ -24,8 +40,6 @@ services:
       POSTGRES_USER: ${DB_USER:-saas_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-saas_pass}
       POSTGRES_DB: ${DB_NAME:-saas_crm}
-    ports:
-      - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./prisma/init-rls.sql:/docker-entrypoint-initdb.d/01-rls.sql
@@ -34,6 +48,20 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22.0
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-saas_user}:${DB_PASSWORD:-saas_pass}@postgres:5432/${DB_NAME:-saas_crm}
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: 20
+      MAX_CLIENT_CONN: 500
+      MAX_DB_CONNECTIONS: 50
+    ports:
+      - '6432:5432'
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
@@ -67,6 +95,14 @@ services:
       - miniodata:/data
     command: server /data --console-address ":9001"
 
+  clamav:
+    image: clamav/clamav:stable
+    ports:
+      - '3310:3310'
+    volumes:
+      - clamdata:/var/lib/clamav
+    restart: unless-stopped
+
   mailhog:
     image: mailhog/mailhog:latest
     ports:
@@ -76,3 +112,4 @@ services:
 volumes:
   pgdata:
   miniodata:
+  clamdata:
