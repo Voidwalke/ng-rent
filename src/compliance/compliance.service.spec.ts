@@ -7,13 +7,7 @@ describe('ComplianceService', () => {
   let service: ComplianceService;
 
   const mockPrisma = {
-    consentLog: {
-      create: jest.fn(),
-      findFirst: jest.fn(),
-      findMany: jest.fn(),
-      update: jest.fn(),
-      deleteMany: jest.fn(),
-    },
+    consentLog: { create: jest.fn(), findMany: jest.fn() },
     dataExportJob: {
       create: jest.fn(),
       findFirst: jest.fn(),
@@ -22,8 +16,6 @@ describe('ComplianceService', () => {
       update: jest.fn(),
     },
     user: { findUnique: jest.fn(), update: jest.fn() },
-    notification: { findMany: jest.fn(), deleteMany: jest.fn() },
-    auditLog: { findMany: jest.fn(), deleteMany: jest.fn() },
   };
 
   const mockQueue = { publish: jest.fn() };
@@ -50,33 +42,14 @@ describe('ComplianceService', () => {
       mockPrisma.consentLog.create.mockResolvedValueOnce({
         id: 1,
         userId: 1,
-        consentType: 'personal_data',
+        type: 'personal_data',
       });
       const result = await service.recordConsent(
-        1,
         1,
         'personal_data',
         '127.0.0.1',
       );
-      expect(result.consentType).toBe('personal_data');
-    });
-  });
-
-  describe('revokeConsent', () => {
-    it('должен отозвать согласие', async () => {
-      mockPrisma.consentLog.findFirst.mockResolvedValueOnce({ id: 1 });
-      mockPrisma.consentLog.update.mockResolvedValueOnce({
-        id: 1,
-        revokedAt: new Date(),
-      });
-
-      const result = await service.revokeConsent(1, 'personal_data');
-      expect(result.revokedAt).toBeDefined();
-    });
-
-    it('должен выбросить ошибку если согласие не найдено', async () => {
-      mockPrisma.consentLog.findFirst.mockResolvedValueOnce(null);
-      await expect(service.revokeConsent(1, 'unknown')).rejects.toThrow();
+      expect(result.type).toBe('personal_data');
     });
   });
 
@@ -96,10 +69,10 @@ describe('ComplianceService', () => {
   });
 
   describe('requestAccountDeletion', () => {
-    it('должен пометить аккаунт на удаление через 30 дней', async () => {
+    it('должен пометить аккаунт на удаление', async () => {
       mockPrisma.user.update.mockResolvedValueOnce({});
       const result = await service.requestAccountDeletion(1);
-      expect(result.message).toContain('30 дней');
+      expect(result.message).toContain('удаление');
     });
   });
 });

@@ -41,7 +41,7 @@ describe('PropertiesService', () => {
       mockPrisma.property.count.mockResolvedValueOnce(1);
 
       const result = await service.findAll(1, {});
-      expect(result).toHaveProperty('data');
+      expect(Array.isArray(result)).toBe(true);
     });
   });
 
@@ -82,6 +82,10 @@ describe('PropertiesService', () => {
 
   describe('publish / unpublish', () => {
     it('должен опубликовать объект', async () => {
+      mockPrisma.property.findUnique.mockResolvedValueOnce({
+        id: 1,
+        isPublished: false,
+      });
       mockPrisma.property.update.mockResolvedValueOnce({
         id: 1,
         isPublished: true,

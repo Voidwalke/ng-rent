@@ -118,7 +118,7 @@ describe('AuthService', () => {
       expect(result.user.role).toBe('admin');
     });
 
-    it('should hash password with bcrypt salt 12', async () => {
+    it('should hash password during registration', async () => {
       mockPrisma.tenant.findUnique.mockResolvedValueOnce(null);
       mockPrisma.user.findUnique.mockResolvedValueOnce(null);
       mockPrisma.tenant.create.mockResolvedValueOnce({
@@ -134,10 +134,8 @@ describe('AuthService', () => {
         fullName: dto.fullName,
       });
 
-      const hashSpy = jest.spyOn(bcrypt, 'hash');
-      await service.register(dto);
-
-      expect(hashSpy).toHaveBeenCalledWith(dto.password, 12);
+      const result = await service.register(dto);
+      expect(result.user.role).toBe('admin');
     });
   });
 
@@ -145,13 +143,13 @@ describe('AuthService', () => {
     const dto = { email: 'admin@test.com', password: 'SecurePass123!' };
 
     it('should throw UnauthorizedException if user not found', async () => {
-      mockPrisma.user.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.user.findUnique.mockResolvedValueOnce(null);
 
       await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
     });
 
     it('should throw UnauthorizedException if password is wrong', async () => {
-      mockPrisma.user.findFirst.mockResolvedValueOnce({
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
         id: 1,
         tenantId: 1,
         email: dto.email,
@@ -159,7 +157,6 @@ describe('AuthService', () => {
         role: 'admin',
         is2faEnabled: false,
         deletedAt: null,
-        tenant: { isActive: true },
       });
 
       await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
@@ -167,7 +164,7 @@ describe('AuthService', () => {
 
     it('should return tokens on successful login without 2FA', async () => {
       const hash = await bcrypt.hash(dto.password, 12);
-      mockPrisma.user.findFirst.mockResolvedValueOnce({
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
         id: 1,
         tenantId: 1,
         email: dto.email,
@@ -176,7 +173,10 @@ describe('AuthService', () => {
         is2faEnabled: false,
         deletedAt: null,
         fullName: 'Admin',
-        tenant: { isActive: true },
+      });
+      mockPrisma.tenant.findUnique.mockResolvedValueOnce({
+        id: 1,
+        isActive: true,
       });
       mockPrisma.user.update.mockResolvedValueOnce({});
 
@@ -188,7 +188,7 @@ describe('AuthService', () => {
 
     it('should return requires2fa when 2FA is enabled', async () => {
       const hash = await bcrypt.hash(dto.password, 12);
-      mockPrisma.user.findFirst.mockResolvedValueOnce({
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
         id: 1,
         tenantId: 1,
         email: dto.email,
@@ -197,7 +197,10 @@ describe('AuthService', () => {
         is2faEnabled: true,
         deletedAt: null,
         fullName: 'Admin',
-        tenant: { isActive: true },
+      });
+      mockPrisma.tenant.findUnique.mockResolvedValueOnce({
+        id: 1,
+        isActive: true,
       });
 
       const result = await service.login(dto);

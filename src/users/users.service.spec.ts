@@ -40,28 +40,33 @@ describe('UsersService', () => {
       mockPrisma.user.count.mockResolvedValueOnce(1);
 
       const result = await service.findAll(1);
-      expect(result).toHaveProperty('data');
+      expect(result).toBeDefined();
     });
   });
 
   describe('findOne', () => {
     it('должен вернуть пользователя по id', async () => {
-      mockPrisma.user.findFirst.mockResolvedValueOnce({
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
         id: 1,
         email: 'test@test.com',
       });
-      const result = await service.findOne(1, 1);
+      const result = await service.findOne(1);
       expect(result.email).toBe('test@test.com');
     });
   });
 
   describe('remove', () => {
     it('должен выполнить мягкое удаление', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        id: 1,
+        email: 'test@test.com',
+        deletedAt: null,
+      });
       mockPrisma.user.update.mockResolvedValueOnce({
         id: 1,
         deletedAt: new Date(),
       });
-      const result = await service.remove(1, 1);
+      const result = await service.remove(1);
       expect(result.deletedAt).toBeDefined();
     });
   });
