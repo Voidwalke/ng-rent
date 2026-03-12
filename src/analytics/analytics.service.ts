@@ -42,7 +42,9 @@ export class AnalyticsService {
       this.prisma.unit.count({
         where: { tenantId, status: 'rented', deletedAt: null },
       }),
-      this.prisma.contract.count({ where: { tenantId, status: 'active' } }),
+      this.prisma.contract.count({
+        where: { tenantId, status: { in: ['signed', 'active'] } },
+      }),
       this.prisma.application.count({
         where: { tenantId, status: { in: ['submitted', 'under_review'] } },
       }),
