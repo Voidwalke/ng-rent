@@ -33,6 +33,11 @@ import { Integration1CModule } from './integration-1c/integration-1c.module';
 import { JwtAuthGuard } from './common/guards';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { MetricsModule } from './metrics/metrics.module';
+import { ComplianceModule } from './compliance/compliance.module';
+import { SubscriptionsCron } from './subscriptions/subscriptions.cron';
+import { SupportCron } from './support/support.cron';
+import { PlatformCron } from './platform-analytics/platform.cron';
 
 @Module({
   imports: [
@@ -83,8 +88,13 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     TenantPortalModule,
     Integration1CModule,
     HealthModule,
+    MetricsModule,
+    ComplianceModule,
   ],
   providers: [
+    SubscriptionsCron,
+    SupportCron,
+    PlatformCron,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
