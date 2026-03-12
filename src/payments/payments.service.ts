@@ -6,37 +6,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-
-/** Интерфейс платёжного провайдера */
-interface PaymentProvider {
-  createPayment(
-    amount: number,
-    currency: string,
-    description: string,
-    metadata: any,
-  ): Promise<{ id: string; confirmationUrl: string }>;
-  verifyWebhook(body: any, signature: string): boolean;
-}
-
-/** Мок-провайдер ЮKassa для разработки */
-class MockYookassaProvider implements PaymentProvider {
-  async createPayment(
-    amount: number,
-    _currency: string,
-    description: string,
-    metadata: any,
-  ) {
-    const id = `mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    return {
-      id,
-      confirmationUrl: `https://yookassa.ru/checkout/mock/${id}`,
-    };
-  }
-
-  verifyWebhook(_body: any, _signature: string) {
-    return true;
-  }
-}
+import {
+  PaymentProvider,
+  YookassaProvider,
+  MockYookassaProvider,
+} from './yookassa.provider';
 
 @Injectable()
 export class PaymentsService {
@@ -47,7 +21,12 @@ export class PaymentsService {
     private prisma: PrismaService,
     private config: ConfigService,
   ) {
-    this.provider = new MockYookassaProvider();
+    const shopId = this.config.get<string>('YOOKASSA_SHOP_ID');
+    this.provider = shopId
+      ? new YookassaProvider(config)
+      : new MockYookassaProvider();
+
+    this.logger.log(`Платёжный провайдер: ${shopId ? 'ЮKassa' : 'Mock'}`);
   }
 
   /** Создаёт платёж по счёту */
@@ -70,7 +49,11 @@ export class PaymentsService {
       payableAmount,
       'RUB',
       `Оплата счёта ${invoice.invoiceNumber}`,
-      { invoiceId: invoice.id, tenantId },
+      {
+        invoiceId: invoice.id,
+        tenantId,
+        email: invoice.contract?.client?.contactEmail,
+      },
     );
 
     const payment = await this.prisma.payment.create({
@@ -154,6 +137,29 @@ export class PaymentsService {
       });
     }
 
+    if (event === 'refund.succeeded') {
+      await this.prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: 'refunded', webhookData: paymentData },
+      });
+
+      const invoice = await this.prisma.invoice.findUnique({
+        where: { id: payment.invoiceId },
+      });
+      if (invoice) {
+        const refundAmount = Number(
+          paymentData.amount?.value || payment.amount,
+        );
+        await this.prisma.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            paidAmount: Math.max(0, Number(invoice.paidAmount) - refundAmount),
+            status: 'cancelled',
+          },
+        });
+      }
+    }
+
     return { status: 'ok' };
   }
 
@@ -165,29 +171,31 @@ export class PaymentsService {
     });
   }
 
-  /** Выполняет возврат платежа */
+  /** Выполняет возврат платежа через провайдер */
   async refund(tenantId: number, invoiceId: number, amount?: number) {
-    const invoice = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, tenantId, status: 'paid' },
+    const payment = await this.prisma.payment.findFirst({
+      where: { invoiceId, tenantId, status: 'succeeded' },
+      orderBy: { createdAt: 'desc' },
     });
-    if (!invoice) throw new NotFoundException('Оплаченный счёт не найден');
+    if (!payment) throw new NotFoundException('Успешный платёж не найден');
 
-    const refundAmount = amount || Number(invoice.totalAmount);
-
-    // TODO: вызов ЮKassa refund API
-    this.logger.log(
-      `Возврат ${refundAmount} ₽ по счёту ${invoice.invoiceNumber}`,
+    const refundAmount = amount || Number(payment.amount);
+    const result = await this.provider.createRefund(
+      payment.externalId,
+      refundAmount,
     );
 
-    await this.prisma.invoice.update({
-      where: { id: invoiceId },
-      data: {
-        status: 'cancelled',
-        paidAmount: Number(invoice.paidAmount) - refundAmount,
-      },
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: 'refunding', webhookData: { refundId: result.id } },
     });
 
-    return { message: 'Возврат выполнен', amount: refundAmount };
+    this.logger.log(`Возврат ${refundAmount} ₽, refundId=${result.id}`);
+    return {
+      message: 'Возврат инициирован',
+      refundId: result.id,
+      amount: refundAmount,
+    };
   }
 
   /** Возвращает все платежи тенанта с пагинацией */
