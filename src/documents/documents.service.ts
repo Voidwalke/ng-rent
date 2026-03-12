@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import * as Minio from 'minio';
 import * as crypto from 'crypto';
+import { ClamavService } from '../common/services/clamav.service';
 import * as path from 'path';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class DocumentsService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private clamav: ClamavService,
   ) {
     this.bucket = this.config.get<string>('MINIO_BUCKET', 'documents');
 
@@ -49,6 +51,8 @@ export class DocumentsService {
     entityId: number,
     category = 'other',
   ) {
+    await this.clamav.scan(file.buffer, file.originalname);
+
     const ext = path.extname(file.originalname);
     const hash = crypto.randomBytes(8).toString('hex');
     const objectName = `${tenantId}/${entityType}/${entityId}/${hash}${ext}`;
