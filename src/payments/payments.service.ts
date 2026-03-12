@@ -181,7 +181,7 @@ export class PaymentsService {
 
     const refundAmount = amount || Number(payment.amount);
     const result = await this.provider.createRefund(
-      payment.externalId,
+      payment.externalId!,
       refundAmount,
     );
 

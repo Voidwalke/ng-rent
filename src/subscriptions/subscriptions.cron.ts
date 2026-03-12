@@ -26,20 +26,22 @@ export class SubscriptionsCron {
       const newEnd = new Date(newStart);
       newEnd.setMonth(newEnd.getMonth() + 1);
 
+      const dueDate = new Date(newStart);
+      dueDate.setDate(dueDate.getDate() + 14);
+
       await this.prisma.subscription.update({
         where: { id: sub.id },
-        data: {
-          currentPeriodStart: newStart,
-          currentPeriodEnd: newEnd,
-        },
+        data: { currentPeriodStart: newStart, currentPeriodEnd: newEnd },
       });
 
       await this.prisma.subscriptionInvoice.create({
         data: {
+          tenantId: sub.tenantId,
           subscriptionId: sub.id,
-          amount: Number(sub.priceMonthly),
+          amount: sub.priceMonthly,
           periodStart: newStart,
           periodEnd: newEnd,
+          dueDate,
           status: 'pending',
         },
       });
@@ -53,16 +55,13 @@ export class SubscriptionsCron {
   @Cron('30 6 * * *')
   async retryFailedPayments() {
     const failed = await this.prisma.subscriptionInvoice.findMany({
-      where: { status: 'failed', retryCount: { lt: 3 } },
+      where: { status: 'failed' },
     });
 
     for (const invoice of failed) {
       await this.prisma.subscriptionInvoice.update({
         where: { id: invoice.id },
-        data: {
-          status: 'pending',
-          retryCount: invoice.retryCount + 1,
-        },
+        data: { status: 'pending' },
       });
     }
 
@@ -84,7 +83,7 @@ export class SubscriptionsCron {
     for (const sub of expired) {
       await this.prisma.subscription.update({
         where: { id: sub.id },
-        data: { status: 'expired' },
+        data: { status: 'canceled' },
       });
 
       await this.prisma.tenant.update({

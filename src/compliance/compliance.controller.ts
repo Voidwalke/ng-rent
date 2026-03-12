@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ComplianceService } from './compliance.service';
 import { CurrentUser } from '../common/decorators';
@@ -13,28 +13,14 @@ export class ComplianceController {
   @ApiOperation({ summary: 'Дать согласие на обработку ПД' })
   recordConsent(
     @CurrentUser() user: any,
-    @Body('consentType') consentType: string,
+    @Body('type') type: string,
     @Req() req: any,
   ) {
-    return this.complianceService.recordConsent(
-      user.id,
-      user.tenantId,
-      consentType,
-      req.ip,
-    );
-  }
-
-  @Delete('consent')
-  @ApiOperation({ summary: 'Отозвать согласие на обработку ПД' })
-  revokeConsent(
-    @CurrentUser() user: any,
-    @Body('consentType') consentType: string,
-  ) {
-    return this.complianceService.revokeConsent(user.id, consentType);
+    return this.complianceService.recordConsent(user.id, type, req.ip);
   }
 
   @Get('consents')
-  @ApiOperation({ summary: 'Список действующих согласий' })
+  @ApiOperation({ summary: 'Список согласий' })
   getConsents(@CurrentUser() user: any) {
     return this.complianceService.getUserConsents(user.id);
   }
@@ -52,7 +38,7 @@ export class ComplianceController {
   }
 
   @Post('delete-account')
-  @ApiOperation({ summary: 'Запрос на удаление аккаунта (30 дней)' })
+  @ApiOperation({ summary: 'Запрос на удаление аккаунта' })
   deleteAccount(@CurrentUser() user: any) {
     return this.complianceService.requestAccountDeletion(user.id);
   }

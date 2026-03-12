@@ -55,7 +55,6 @@ export class PlatformCron {
     for (const user of toDelete) {
       await this.prisma.notification.deleteMany({ where: { userId: user.id } });
       await this.prisma.auditLog.deleteMany({ where: { userId: user.id } });
-      await this.prisma.consentLog.deleteMany({ where: { userId: user.id } });
       await this.prisma.user.delete({ where: { id: user.id } });
     }
 

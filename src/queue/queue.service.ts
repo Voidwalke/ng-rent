@@ -16,8 +16,8 @@ export interface QueueMessage {
 @Injectable()
 export class QueueService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(QueueService.name);
-  private connection: amqplib.Connection | null = null;
-  private channel: amqplib.Channel | null = null;
+  private connection: any = null;
+  private channel: any = null;
 
   static readonly QUEUES = {
     NOTIFICATIONS: 'notifications',
