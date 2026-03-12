@@ -1,0 +1,41 @@
+import { Controller, Get, Param, Query, ParseIntPipe } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ActivityService } from './activity.service';
+import { CurrentUser, Roles } from '../common/decorators';
+
+@ApiTags('Лента событий')
+@ApiBearerAuth()
+@Controller('activity')
+export class ActivityController {
+  constructor(private readonly activityService: ActivityService) {}
+
+  @Get()
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'Лента последних событий организации' })
+  getFeed(
+    @CurrentUser() user: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.activityService.getFeed(
+      user.tenantId,
+      page ? +page : 1,
+      limit ? +limit : 30,
+    );
+  }
+
+  @Get(':entityType/:entityId')
+  @Roles('admin', 'manager')
+  @ApiOperation({ summary: 'События по конкретной сущности' })
+  getByEntity(
+    @CurrentUser() user: any,
+    @Param('entityType') entityType: string,
+    @Param('entityId', ParseIntPipe) entityId: number,
+  ) {
+    return this.activityService.getByEntity(
+      user.tenantId,
+      entityType,
+      entityId,
+    );
+  }
+}

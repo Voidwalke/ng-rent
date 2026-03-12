@@ -38,6 +38,7 @@ import { ComplianceModule } from './compliance/compliance.module';
 import { SubscriptionsCron } from './subscriptions/subscriptions.cron';
 import { SupportCron } from './support/support.cron';
 import { PlatformCron } from './platform-analytics/platform.cron';
+import { ActivityModule } from './activity/activity.module';
 
 @Module({
   imports: [
@@ -90,6 +91,7 @@ import { PlatformCron } from './platform-analytics/platform.cron';
     HealthModule,
     MetricsModule,
     ComplianceModule,
+    ActivityModule,
   ],
   providers: [
     SubscriptionsCron,
