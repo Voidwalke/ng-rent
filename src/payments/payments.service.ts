@@ -179,9 +179,12 @@ export class PaymentsService {
     });
     if (!payment) throw new NotFoundException('Успешный платёж не найден');
 
+    if (!payment.externalId)
+      throw new NotFoundException('Платёж не имеет внешнего идентификатора');
+
     const refundAmount = amount || Number(payment.amount);
     const result = await this.provider.createRefund(
-      payment.externalId!,
+      payment.externalId,
       refundAmount,
     );
 

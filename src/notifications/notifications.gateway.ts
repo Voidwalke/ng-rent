@@ -42,7 +42,7 @@ export class NotificationsGateway
       });
 
       const room = `user:${payload.userId}`;
-      client.join(room);
+      void client.join(room);
       client.data.userId = payload.userId;
       client.data.tenantId = payload.tenantId;
 

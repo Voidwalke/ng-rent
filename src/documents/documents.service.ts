@@ -27,7 +27,7 @@ export class DocumentsService {
       secretKey: this.config.get<string>('MINIO_SECRET_KEY', 'minioadmin'),
     });
 
-    this.ensureBucket();
+    void this.ensureBucket();
   }
 
   private async ensureBucket() {

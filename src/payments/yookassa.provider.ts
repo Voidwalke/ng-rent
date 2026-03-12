@@ -128,7 +128,7 @@ export class YookassaProvider implements PaymentProvider {
 /** Мок-провайдер для разработки и тестирования */
 export class MockYookassaProvider implements PaymentProvider {
   async createPayment(
-    amount: number,
+    _amount: number,
     _currency: string,
     _description: string,
     _metadata: any,

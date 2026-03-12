@@ -9,9 +9,6 @@ import { RedisService } from '../redis/redis.service';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let prisma: PrismaService;
-  let jwt: JwtService;
-  let redis: RedisService;
 
   const mockPrisma = {
     tenant: { findUnique: jest.fn(), create: jest.fn() },
@@ -60,9 +57,6 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    prisma = module.get<PrismaService>(PrismaService);
-    jwt = module.get<JwtService>(JwtService);
-    redis = module.get<RedisService>(RedisService);
 
     jest.clearAllMocks();
   });
