@@ -182,7 +182,8 @@ describe('API (e2e)', () => {
         .get('/api/catalog/properties')
         .expect(200)
         .expect((res) => {
-          expect(Array.isArray(res.body)).toBe(true);
+          expect(res.body).toHaveProperty('data');
+          expect(Array.isArray(res.body.data)).toBe(true);
         });
     });
   });
