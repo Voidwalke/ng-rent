@@ -9,6 +9,7 @@ describe('ContractsService', () => {
     contract: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
     },
@@ -48,7 +49,7 @@ describe('ContractsService', () => {
 
   describe('findOne', () => {
     it('должен вернуть договор по id', async () => {
-      mockPrisma.contract.findUnique.mockResolvedValueOnce({
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({
         id: 1,
         contractNumber: 'C-001',
       });
@@ -57,14 +58,14 @@ describe('ContractsService', () => {
     });
 
     it('должен выбросить ошибку если не найден', async () => {
-      mockPrisma.contract.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.contract.findFirst.mockResolvedValueOnce(null);
       await expect(service.findOne(999)).rejects.toThrow();
     });
   });
 
   describe('terminate', () => {
     it('должен расторгнуть договор', async () => {
-      mockPrisma.contract.findUnique.mockResolvedValueOnce({
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({
         id: 1,
         status: 'active',
         unitId: 1,

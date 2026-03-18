@@ -28,9 +28,9 @@ export class PropertiesService {
     });
   }
 
-  async findOne(id: number) {
-    const property = await this.prisma.property.findUnique({
-      where: { id },
+  async findOne(id: number, tenantId?: number) {
+    const property = await this.prisma.property.findFirst({
+      where: { id, ...(tenantId && { tenantId }), deletedAt: null },
       include: { units: { where: { deletedAt: null } } },
     });
     if (!property || property.deletedAt) {

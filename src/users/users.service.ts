@@ -22,9 +22,9 @@ export class UsersService {
     });
   }
 
-  async findOne(id: number) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
+  async findOne(id: number, tenantId?: number) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, ...(tenantId && { tenantId }) },
       select: {
         id: true,
         email: true,

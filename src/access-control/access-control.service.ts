@@ -31,9 +31,9 @@ export class AccessControlService {
   }
 
   /** Возвращает карту доступа по идентификатору */
-  async findOne(id: number) {
-    const card = await this.prisma.accessCard.findUnique({
-      where: { id },
+  async findOne(id: number, tenantId?: number) {
+    const card = await this.prisma.accessCard.findFirst({
+      where: { id, ...(tenantId && { tenantId }) },
       include: { client: true, contract: true },
     });
     if (!card) throw new NotFoundException('Карта не найдена');

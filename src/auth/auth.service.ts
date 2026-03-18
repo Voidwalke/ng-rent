@@ -118,7 +118,9 @@ export class AuthService {
       );
 
       // TODO: отправка OTP по email через MailerService
-      this.logger.log(`OTP для ${user.email}: ${otp}`);
+      if (process.env.NODE_ENV === 'development') {
+        this.logger.debug(`OTP: ${otp}`);
+      }
 
       return { requires2fa: true, tempToken };
     }
@@ -208,7 +210,9 @@ export class AuthService {
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
     await this.redis.set(`otp:${userId}`, otpHash, 300);
 
-    this.logger.log(`OTP для ${user.email}: ${otp}`);
+    if (process.env.NODE_ENV === 'development') {
+      this.logger.debug(`OTP: ${otp}`);
+    }
     return { message: 'Код отправлен на email' };
   }
 
@@ -237,11 +241,13 @@ export class AuthService {
   }
 
   /** Отправляет письмо для подтверждения email */
-  async sendVerificationEmail(userId: number, email: string) {
+  async sendVerificationEmail(userId: number, _email: string) {
     const token = crypto.randomBytes(32).toString('hex');
     await this.redis.set(`email-verify:${token}`, userId, 604800);
     // TODO: отправка email через MailerService
-    this.logger.log(`Email verification для ${email}: ${token}`);
+    if (process.env.NODE_ENV === 'development') {
+      this.logger.debug(`Email verification token generated`);
+    }
   }
 
   /** Подтверждает email по токену из письма */
@@ -322,7 +328,9 @@ export class AuthService {
     const token = crypto.randomBytes(32).toString('hex');
     await this.redis.set(`reset:${token}`, user.id, 3600);
 
-    this.logger.log(`Reset token для ${user.email}: ${token}`);
+    if (process.env.NODE_ENV === 'development') {
+      this.logger.debug(`Reset token generated`);
+    }
     return { message: 'Если email существует, ссылка для сброса отправлена' };
   }
 
@@ -373,7 +381,9 @@ export class AuthService {
       259200,
     );
 
-    this.logger.log(`Invite для ${dto.email}: ${token}`);
+    if (process.env.NODE_ENV === 'development') {
+      this.logger.debug(`Invite token generated`);
+    }
     return { message: 'Приглашение отправлено', email: dto.email };
   }
 

@@ -28,7 +28,11 @@ export class PrismaService
 
   /** Устанавливает tenant_id для RLS-изоляции */
   async setTenant(tenantId: number) {
-    await this.$executeRawUnsafe(`SET app.current_tenant = '${tenantId}'`);
+    const id = Number(tenantId);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error('Invalid tenantId');
+    }
+    await this.$executeRawUnsafe(`SET app.current_tenant = '${id}'`);
   }
 
   /** Сбрасывает tenant_id (для суперадмина) */

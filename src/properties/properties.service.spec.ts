@@ -47,7 +47,7 @@ describe('PropertiesService', () => {
 
   describe('findOne', () => {
     it('должен вернуть объект с помещениями', async () => {
-      mockPrisma.property.findUnique.mockResolvedValueOnce({
+      mockPrisma.property.findFirst.mockResolvedValueOnce({
         id: 1,
         name: 'БЦ Тест',
         units: [{ id: 1 }],
@@ -57,7 +57,7 @@ describe('PropertiesService', () => {
     });
 
     it('должен выбросить ошибку если не найден', async () => {
-      mockPrisma.property.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.property.findFirst.mockResolvedValueOnce(null);
       await expect(service.findOne(999)).rejects.toThrow();
     });
   });
@@ -82,7 +82,7 @@ describe('PropertiesService', () => {
 
   describe('publish / unpublish', () => {
     it('должен опубликовать объект', async () => {
-      mockPrisma.property.findUnique.mockResolvedValueOnce({
+      mockPrisma.property.findFirst.mockResolvedValueOnce({
         id: 1,
         isPublished: false,
       });

@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
@@ -30,8 +30,8 @@ import { HealthModule } from './health/health.module';
 import { MailerModule } from './mailer/mailer.module';
 import { QueueModule } from './queue/queue.module';
 import { Integration1CModule } from './integration-1c/integration-1c.module';
-import { JwtAuthGuard } from './common/guards';
-import { TenantMiddleware } from './common/middleware/tenant.middleware';
+import { JwtAuthGuard, RolesGuard } from './common/guards';
+import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { MetricsModule } from './metrics/metrics.module';
 import { ComplianceModule } from './compliance/compliance.module';
@@ -98,12 +98,13 @@ import { ActivityModule } from './activity/activity.module';
     SupportCron,
     PlatformCron,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
   ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(RequestIdMiddleware).forRoutes('*');
-    consumer.apply(TenantMiddleware).forRoutes('*');
   }
 }

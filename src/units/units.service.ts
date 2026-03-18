@@ -81,9 +81,9 @@ export class UnitsService {
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
-  async findOne(id: number) {
-    const unit = await this.prisma.unit.findUnique({
-      where: { id },
+  async findOne(id: number, tenantId?: number) {
+    const unit = await this.prisma.unit.findFirst({
+      where: { id, ...(tenantId && { tenantId }), deletedAt: null },
       include: { property: true },
     });
     if (!unit || unit.deletedAt) {

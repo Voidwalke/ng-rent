@@ -23,9 +23,9 @@ export class ContractsService {
     });
   }
 
-  async findOne(id: number) {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id },
+  async findOne(id: number, tenantId?: number) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id, ...(tenantId && { tenantId }) },
       include: {
         application: true,
         client: true,

@@ -46,7 +46,7 @@ describe('UsersService', () => {
 
   describe('findOne', () => {
     it('должен вернуть пользователя по id', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce({
+      mockPrisma.user.findFirst.mockResolvedValueOnce({
         id: 1,
         email: 'test@test.com',
       });
@@ -57,7 +57,7 @@ describe('UsersService', () => {
 
   describe('remove', () => {
     it('должен выполнить мягкое удаление', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce({
+      mockPrisma.user.findFirst.mockResolvedValueOnce({
         id: 1,
         email: 'test@test.com',
         deletedAt: null,

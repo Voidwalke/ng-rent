@@ -25,9 +25,9 @@ export class ApplicationsService {
     });
   }
 
-  async findOne(id: number) {
-    const app = await this.prisma.application.findUnique({
-      where: { id },
+  async findOne(id: number, tenantId?: number) {
+    const app = await this.prisma.application.findFirst({
+      where: { id, ...(tenantId && { tenantId }) },
       include: {
         unit: { include: { property: true } },
         client: true,
@@ -130,18 +130,20 @@ export class ApplicationsService {
   }
 
   // Подписан — активируем аренду
-  async markSigned(id: number) {
-    const app = await this.findOne(id);
+  async markSigned(id: number, tenantId?: number) {
+    const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'signed');
 
-    await this.prisma.unit.update({
-      where: { id: app.unitId },
-      data: { status: 'rented' },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      await tx.unit.update({
+        where: { id: app.unitId },
+        data: { status: 'rented' },
+      });
 
-    return this.prisma.application.update({
-      where: { id },
-      data: { status: 'signed' },
+      return tx.application.update({
+        where: { id },
+        data: { status: 'signed' },
+      });
     });
   }
 

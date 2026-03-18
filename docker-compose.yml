@@ -55,7 +55,7 @@ services:
     image: edoburu/pgbouncer:1.22.0
     environment:
       DATABASE_URL: postgres://${DB_USER:-saas_user}:${DB_PASSWORD:-saas_pass}@postgres:5432/${DB_NAME:-saas_crm}
-      POOL_MODE: transaction
+      POOL_MODE: session
       DEFAULT_POOL_SIZE: 20
       MAX_CLIENT_CONN: 500
       MAX_DB_CONNECTIONS: 50
