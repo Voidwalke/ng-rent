@@ -48,9 +48,9 @@ export class InvoicesService {
   }
 
   /** Возвращает счёт по идентификатору */
-  async findOne(id: number) {
-    const invoice = await this.prisma.invoice.findUnique({
-      where: { id },
+  async findOne(id: number, tenantId?: number) {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id, ...(tenantId && { tenantId }) },
       include: {
         contract: {
           include: {

@@ -48,7 +48,7 @@ describe('InvoicesService', () => {
 
   describe('findOne', () => {
     it('должен вернуть счёт по id', async () => {
-      mockPrisma.invoice.findUnique.mockResolvedValueOnce({
+      mockPrisma.invoice.findFirst.mockResolvedValueOnce({
         id: 1,
         invoiceNumber: 'INV-001',
       });
@@ -59,7 +59,7 @@ describe('InvoicesService', () => {
 
   describe('pay', () => {
     it('должен подтвердить оплату счёта', async () => {
-      mockPrisma.invoice.findUnique.mockResolvedValueOnce({
+      mockPrisma.invoice.findFirst.mockResolvedValueOnce({
         id: 1,
         status: 'pending',
         totalAmount: 10000,

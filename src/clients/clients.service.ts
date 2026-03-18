@@ -13,8 +13,10 @@ export class ClientsService {
     });
   }
 
-  async findOne(id: number) {
-    const client = await this.prisma.client.findUnique({ where: { id } });
+  async findOne(id: number, tenantId?: number) {
+    const client = await this.prisma.client.findFirst({
+      where: { id, ...(tenantId && { tenantId }) },
+    });
     if (!client) throw new NotFoundException('Клиент не найден');
     return client;
   }

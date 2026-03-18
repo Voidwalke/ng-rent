@@ -51,8 +51,8 @@ export class AccessControlService {
       zones?: string[];
     },
   ) {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: data.contractId },
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: data.contractId, tenantId },
     });
 
     const card = await this.prisma.accessCard.create({
