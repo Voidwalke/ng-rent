@@ -80,35 +80,37 @@ export class SubscriptionsService {
     const periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-    // Завершаем текущую подписку
-    await this.prisma.subscription.update({
-      where: { id: current.id },
-      data: {
-        status: 'canceled',
-        canceledAt: now,
-        cancelReason: `Переход на ${newPlan}`,
-      },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      // Завершаем текущую подписку
+      await tx.subscription.update({
+        where: { id: current.id },
+        data: {
+          status: 'canceled',
+          canceledAt: now,
+          cancelReason: `Переход на ${newPlan}`,
+        },
+      });
 
-    // Создаём новую
-    const newSub = await this.prisma.subscription.create({
-      data: {
-        tenantId,
-        plan: newPlan,
-        priceMonthly: PLAN_PRICES[newPlan],
-        status: 'active',
-        currentPeriodStart: now,
-        currentPeriodEnd: periodEnd,
-      },
-    });
+      // Создаём новую
+      const newSub = await tx.subscription.create({
+        data: {
+          tenantId,
+          plan: newPlan,
+          priceMonthly: PLAN_PRICES[newPlan],
+          status: 'active',
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+        },
+      });
 
-    // Обновляем план в тенанте
-    await this.prisma.tenant.update({
-      where: { id: tenantId },
-      data: { plan: newPlan },
-    });
+      // Обновляем план в тенанте
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: { plan: newPlan },
+      });
 
-    return newSub;
+      return newSub;
+    });
   }
 
   /** Отмена подписки */

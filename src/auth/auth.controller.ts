@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import { Controller, Post, Get, Delete, Body, Param } from '@nestjs/common';
 import {
   ApiTags,
@@ -26,6 +27,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Post('register')
   @ApiOperation({ summary: 'Регистрация организации' })
   @ApiResponse({
@@ -38,6 +40,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('login')
   @ApiOperation({ summary: 'Вход (при 2FA — вернёт tempToken)' })
   @ApiResponse({
@@ -100,6 +103,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Post('forgot-password')
   @ApiOperation({ summary: 'Запрос на сброс пароля' })
   forgotPassword(@Body() dto: ForgotPasswordDto) {

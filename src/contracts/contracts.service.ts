@@ -9,18 +9,26 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ContractsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(tenantId: number, status?: string) {
+  async findAll(tenantId: number, status?: string, page = 1, limit = 50) {
     const where: any = { tenantId };
     if (status) where.status = status;
+    const take = Math.min(limit, 100);
 
-    return this.prisma.contract.findMany({
-      where,
-      include: {
-        client: { select: { companyName: true, contactName: true } },
-        unit: { select: { unitNumber: true, floor: true, areaSqm: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const [data, total] = await Promise.all([
+      this.prisma.contract.findMany({
+        where,
+        include: {
+          client: { select: { companyName: true, contactName: true } },
+          unit: { select: { unitNumber: true, floor: true, areaSqm: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * take,
+        take,
+      }),
+      this.prisma.contract.count({ where }),
+    ]);
+
+    return { data, total, page, limit: take, pages: Math.ceil(total / take) };
   }
 
   async findOne(id: number, tenantId?: number) {
@@ -51,35 +59,37 @@ export class ContractsService {
       );
     }
 
-    // Номер в формате D-{год}{месяц}-{порядковый}
-    const now = new Date();
-    const prefix = `D-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const count = await this.prisma.contract.count({
-      where: { contractNumber: { startsWith: prefix } },
-    });
-    const contractNumber = `${prefix}-${String(count + 1).padStart(4, '0')}`;
+    return this.prisma.$transaction(async (tx) => {
+      // Номер в формате D-{год}{месяц}-{порядковый}
+      const now = new Date();
+      const prefix = `D-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const count = await tx.contract.count({
+        where: { contractNumber: { startsWith: prefix } },
+      });
+      const contractNumber = `${prefix}-${String(count + 1).padStart(4, '0')}`;
 
-    const contract = await this.prisma.contract.create({
-      data: {
-        tenantId,
-        applicationId,
-        clientId: app.clientId,
-        unitId: app.unitId,
-        contractNumber,
-        startDate: app.desiredStart,
-        endDate: app.desiredEnd,
-        monthlyRent: app.desiredPrice || app.unit.priceMonth,
-        status: 'draft',
-      },
-    });
+      const contract = await tx.contract.create({
+        data: {
+          tenantId,
+          applicationId,
+          clientId: app.clientId,
+          unitId: app.unitId,
+          contractNumber,
+          startDate: app.desiredStart,
+          endDate: app.desiredEnd,
+          monthlyRent: app.desiredPrice || app.unit.priceMonth,
+          status: 'draft',
+        },
+      });
 
-    // Переводим заявку в статус contract_sent
-    await this.prisma.application.update({
-      where: { id: applicationId },
-      data: { status: 'contract_sent' },
-    });
+      // Переводим заявку в статус contract_sent
+      await tx.application.update({
+        where: { id: applicationId },
+        data: { status: 'contract_sent' },
+      });
 
-    return contract;
+      return contract;
+    });
   }
 
   // Подписание — создаём первый счёт и карту СКУД

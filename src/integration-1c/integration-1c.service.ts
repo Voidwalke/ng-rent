@@ -102,14 +102,20 @@ export class Integration1CService {
   }
 
   /** Обрабатывает вебхук подтверждения оплаты из 1С */
-  async handlePaymentWebhook(body: {
-    invoiceNumber: string;
-    paidAmount: number;
-    paidAt: string;
-    paymentReference: string;
-  }) {
+  async handlePaymentWebhook(
+    body: {
+      invoiceNumber: string;
+      paidAmount: number;
+      paidAt: string;
+      paymentReference: string;
+    },
+    tenantId?: number,
+  ) {
     const invoice = await this.prisma.invoice.findFirst({
-      where: { invoiceNumber: body.invoiceNumber },
+      where: {
+        invoiceNumber: body.invoiceNumber,
+        ...(tenantId && { tenantId }),
+      },
     });
 
     if (!invoice) {
@@ -138,15 +144,18 @@ export class Integration1CService {
   }
 
   /** Обрабатывает вебхук обновления данных контрагента из 1С */
-  async handleClientUpdate(body: {
-    inn: string;
-    companyName?: string;
-    legalAddress?: string;
-    bankAccount?: string;
-    bik?: string;
-  }) {
+  async handleClientUpdate(
+    body: {
+      inn: string;
+      companyName?: string;
+      legalAddress?: string;
+      bankAccount?: string;
+      bik?: string;
+    },
+    tenantId?: number,
+  ) {
     const updated = await this.prisma.client.updateMany({
-      where: { inn: body.inn },
+      where: { inn: body.inn, ...(tenantId && { tenantId }) },
       data: {
         ...(body.companyName && { companyName: body.companyName }),
         ...(body.legalAddress && { legalAddress: body.legalAddress }),

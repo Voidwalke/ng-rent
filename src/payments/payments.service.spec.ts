@@ -44,6 +44,7 @@ describe('PaymentsService', () => {
 
   describe('createPayment', () => {
     it('должен создать платёж по счёту', async () => {
+      mockPrisma.payment.findFirst.mockResolvedValueOnce(null); // idempotency check
       mockPrisma.invoice.findFirst.mockResolvedValueOnce({
         id: 1,
         tenantId: 1,
@@ -81,6 +82,9 @@ describe('PaymentsService', () => {
 
   describe('handleWebhook', () => {
     it('должен обработать успешный платёж', async () => {
+      // Dedup check — не найден обработанный
+      mockPrisma.payment.findFirst.mockResolvedValueOnce(null);
+      // Actual payment lookup
       mockPrisma.payment.findFirst.mockResolvedValueOnce({
         id: 1,
         invoiceId: 1,
@@ -106,7 +110,8 @@ describe('PaymentsService', () => {
     });
 
     it('должен игнорировать неизвестный платёж', async () => {
-      mockPrisma.payment.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.payment.findFirst.mockResolvedValueOnce(null); // dedup
+      mockPrisma.payment.findFirst.mockResolvedValueOnce(null); // actual
       const result = await service.handleWebhook(
         { event: 'payment.succeeded', object: { id: 'unknown' } },
         'sig',

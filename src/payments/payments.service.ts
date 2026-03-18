@@ -42,6 +42,18 @@ export class PaymentsService {
     if (invoice.status === 'cancelled')
       throw new BadRequestException('Счёт отменён');
 
+    // H8: Идемпотентность — проверяем, нет ли уже pending-платежа
+    const existingPayment = await this.prisma.payment.findFirst({
+      where: { invoiceId, status: 'pending' },
+    });
+    if (existingPayment) {
+      return {
+        paymentId: existingPayment.id,
+        confirmationUrl: null,
+        message: 'Платёж уже создан и ожидает оплаты',
+      };
+    }
+
     const payableAmount =
       Number(invoice.totalAmount) - Number(invoice.paidAmount || 0);
 
@@ -81,6 +93,22 @@ export class PaymentsService {
 
     const event = body.event;
     const paymentData = body.object;
+
+    // H9: Дедупликация вебхуков
+    const processed = await this.prisma.payment.findFirst({
+      where: {
+        externalId: paymentData.id,
+        status: event === 'payment.succeeded' ? 'succeeded' : undefined,
+      },
+    });
+    if (
+      processed &&
+      ((event === 'payment.succeeded' && processed.status === 'succeeded') ||
+        (event === 'payment.canceled' && processed.status === 'canceled') ||
+        (event === 'refund.succeeded' && processed.status === 'refunded'))
+    ) {
+      return { status: 'already_processed' };
+    }
 
     const payment = await this.prisma.payment.findFirst({
       where: { externalId: paymentData.id },
@@ -183,6 +211,11 @@ export class PaymentsService {
       throw new NotFoundException('Платёж не имеет внешнего идентификатора');
 
     const refundAmount = amount || Number(payment.amount);
+    if (refundAmount <= 0 || refundAmount > Number(payment.amount)) {
+      throw new BadRequestException(
+        `Сумма возврата должна быть от 0.01 до ${String(payment.amount)} ₽`,
+      );
+    }
     const result = await this.provider.createRefund(
       payment.externalId,
       refundAmount,

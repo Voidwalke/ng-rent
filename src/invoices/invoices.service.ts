@@ -12,24 +12,39 @@ export class InvoicesService {
   /** Возвращает список счетов тенанта с фильтрацией */
   async findAll(
     tenantId: number,
-    filters?: { status?: string; contractId?: number },
+    filters?: {
+      status?: string;
+      contractId?: number;
+      page?: number;
+      limit?: number;
+    },
   ) {
     const where: any = { tenantId };
     if (filters?.status) where.status = filters.status;
     if (filters?.contractId) where.contractId = filters.contractId;
 
-    return this.prisma.invoice.findMany({
-      where,
-      include: {
-        contract: {
-          select: {
-            contractNumber: true,
-            client: { select: { companyName: true } },
+    const page = filters?.page || 1;
+    const limit = Math.min(filters?.limit || 50, 100);
+
+    const [data, total] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where,
+        include: {
+          contract: {
+            select: {
+              contractNumber: true,
+              client: { select: { companyName: true } },
+            },
           },
         },
-      },
-      orderBy: { dueDate: 'asc' },
-    });
+        orderBy: { dueDate: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.invoice.count({ where }),
+    ]);
+
+    return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
   /** Возвращает счёт по идентификатору */

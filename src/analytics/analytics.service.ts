@@ -88,28 +88,44 @@ export class AnalyticsService {
     const cached = await this.redis.get<any>(cacheKey);
     if (cached) return cached;
 
-    const result: { month: string; revenue: number }[] = [];
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - months + 1);
+    startDate.setDate(1);
+    startDate.setHours(0, 0, 0, 0);
 
+    // Один запрос вместо N
+    const invoices = await this.prisma.invoice.findMany({
+      where: {
+        tenantId,
+        status: 'paid',
+        paidAt: { gte: startDate },
+      },
+      select: { amount: true, paidAt: true },
+    });
+
+    // Группировка по месяцам в памяти
+    const revenueMap = new Map<string, number>();
     for (let i = months - 1; i >= 0; i--) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-      const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-
-      const sum = await this.prisma.invoice.aggregate({
-        where: {
-          tenantId,
-          status: 'paid',
-          paidAt: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
-
-      result.push({
-        month: startOfMonth.toISOString().slice(0, 7),
-        revenue: Number(sum._sum.amount) || 0,
-      });
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      revenueMap.set(
+        new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 7),
+        0,
+      );
     }
+
+    for (const inv of invoices) {
+      if (!inv.paidAt) continue;
+      const key = inv.paidAt.toISOString().slice(0, 7);
+      if (revenueMap.has(key)) {
+        revenueMap.set(key, revenueMap.get(key)! + Number(inv.amount));
+      }
+    }
+
+    const result = Array.from(revenueMap.entries()).map(([month, revenue]) => ({
+      month,
+      revenue,
+    }));
 
     await this.redis.set(cacheKey, result, 900);
     return result;

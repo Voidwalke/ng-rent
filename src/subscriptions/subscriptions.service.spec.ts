@@ -14,6 +14,7 @@ describe('SubscriptionsService', () => {
     subscriptionInvoice: { findMany: jest.fn() },
     tenant: { update: jest.fn() },
     user: { count: jest.fn() },
+    $transaction: jest.fn((fn) => fn(mockPrisma)),
   };
 
   beforeEach(async () => {

@@ -41,9 +41,11 @@ describe('ContractsService', () => {
       mockPrisma.contract.findMany.mockResolvedValueOnce([
         { id: 1, contractNumber: 'C-001', status: 'active' },
       ]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
 
       const result = await service.findAll(1);
-      expect(result).toHaveLength(1);
+      expect(result.data).toHaveLength(1);
+      expect(result.total).toBe(1);
     });
   });
 

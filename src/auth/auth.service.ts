@@ -108,7 +108,7 @@ export class AuthService {
       throw new UnauthorizedException('Организация заблокирована');
 
     if (user.is2faEnabled) {
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otp = crypto.randomInt(100000, 1000000).toString();
       const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
       await this.redis.set(`otp:${user.id}`, otpHash, 300);
 
@@ -161,6 +161,16 @@ export class AuthService {
     if (payload.type !== '2fa')
       throw new UnauthorizedException('Неверный тип токена');
 
+    // Защита от брутфорса OTP
+    const attemptsKey = `otp-attempts:${payload.userId}`;
+    const attempts = (await this.redis.get<number>(attemptsKey)) || 0;
+    if (attempts >= 5) {
+      await this.redis.del(`otp:${payload.userId}`);
+      throw new BadRequestException(
+        'Превышено количество попыток. Запросите новый код',
+      );
+    }
+
     const otpHash = await this.redis.get<string>(`otp:${payload.userId}`);
     const inputHash = crypto
       .createHash('sha256')
@@ -168,10 +178,12 @@ export class AuthService {
       .digest('hex');
 
     if (!otpHash || otpHash !== inputHash) {
+      await this.redis.set(attemptsKey, attempts + 1, 300);
       throw new BadRequestException('Неверный код');
     }
 
     await this.redis.del(`otp:${payload.userId}`);
+    await this.redis.del(attemptsKey);
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.userId },
@@ -206,7 +218,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException();
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = crypto.randomInt(100000, 1000000).toString();
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
     await this.redis.set(`otp:${userId}`, otpHash, 300);
 
@@ -291,7 +303,7 @@ export class AuthService {
         const user = await this.prisma.user.findUnique({
           where: { id: payload.userId },
         });
-        if (!user || user.refreshToken !== dto.refreshToken) {
+        if (!user || user.refreshToken !== this.hashToken(dto.refreshToken)) {
           throw new UnauthorizedException('Невалидный refresh token');
         }
       }
@@ -506,7 +518,7 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: { refreshToken },
+      data: { refreshToken: this.hashToken(refreshToken) },
     });
   }
 
