@@ -25,6 +25,21 @@ import {
 } from './dto';
 import { JwtPayload } from './jwt.strategy';
 
+/** Время жизни OTP-кода (секунды) */
+const OTP_TTL = 300;
+/** Время жизни токена сброса пароля (секунды) */
+const RESET_TOKEN_TTL = 3600;
+/** Время жизни приглашения (секунды) */
+const INVITE_TTL = 259200;
+/** Время жизни сессии (секунды) */
+const SESSION_TTL = 604800;
+/** Время жизни подтверждения email (секунды) */
+const EMAIL_VERIFY_TTL = 604800;
+/** Максимум попыток OTP */
+const MAX_OTP_ATTEMPTS = 5;
+/** Количество раундов bcrypt */
+const BCRYPT_ROUNDS = 12;
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -48,7 +63,7 @@ export class AuthService {
     });
     if (emailTaken) throw new ConflictException('Email уже зарегистрирован');
 
-    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
     const result = await this.prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
@@ -110,7 +125,7 @@ export class AuthService {
     if (user.is2faEnabled) {
       const otp = crypto.randomInt(100000, 1000000).toString();
       const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
-      await this.redis.set(`otp:${user.id}`, otpHash, 300);
+      await this.redis.set(`otp:${user.id}`, otpHash, OTP_TTL);
 
       const tempToken = await this.jwt.signAsync(
         { userId: user.id, type: '2fa' },
@@ -164,7 +179,7 @@ export class AuthService {
     // Защита от брутфорса OTP
     const attemptsKey = `otp-attempts:${payload.userId}`;
     const attempts = (await this.redis.get<number>(attemptsKey)) || 0;
-    if (attempts >= 5) {
+    if (attempts >= MAX_OTP_ATTEMPTS) {
       await this.redis.del(`otp:${payload.userId}`);
       throw new BadRequestException(
         'Превышено количество попыток. Запросите новый код',
@@ -178,7 +193,7 @@ export class AuthService {
       .digest('hex');
 
     if (!otpHash || otpHash !== inputHash) {
-      await this.redis.set(attemptsKey, attempts + 1, 300);
+      await this.redis.set(attemptsKey, attempts + 1, OTP_TTL);
       throw new BadRequestException('Неверный код');
     }
 
@@ -220,7 +235,7 @@ export class AuthService {
 
     const otp = crypto.randomInt(100000, 1000000).toString();
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
-    await this.redis.set(`otp:${userId}`, otpHash, 300);
+    await this.redis.set(`otp:${userId}`, otpHash, OTP_TTL);
 
     if (process.env.NODE_ENV === 'development') {
       this.logger.debug(`OTP: ${otp}`);
@@ -255,7 +270,7 @@ export class AuthService {
   /** Отправляет письмо для подтверждения email */
   async sendVerificationEmail(userId: number, _email: string) {
     const token = crypto.randomBytes(32).toString('hex');
-    await this.redis.set(`email-verify:${token}`, userId, 604800);
+    await this.redis.set(`email-verify:${token}`, userId, EMAIL_VERIFY_TTL);
     // TODO: отправка email через MailerService
     if (process.env.NODE_ENV === 'development') {
       this.logger.debug(`Email verification token generated`);
@@ -338,7 +353,7 @@ export class AuthService {
     }
 
     const token = crypto.randomBytes(32).toString('hex');
-    await this.redis.set(`reset:${token}`, user.id, 3600);
+    await this.redis.set(`reset:${token}`, user.id, RESET_TOKEN_TTL);
 
     if (process.env.NODE_ENV === 'development') {
       this.logger.debug(`Reset token generated`);
@@ -352,7 +367,7 @@ export class AuthService {
     if (!userId)
       throw new BadRequestException('Невалидный или просроченный токен');
 
-    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
     await this.prisma.user.update({
       where: { id: userId },
       data: { passwordHash, refreshToken: null },
@@ -370,7 +385,7 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.currentPassword, user!.passwordHash);
     if (!valid) throw new BadRequestException('Неверный текущий пароль');
 
-    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
     await this.prisma.user.update({
       where: { id: userId },
       data: { passwordHash },
@@ -390,7 +405,7 @@ export class AuthService {
     await this.redis.set(
       `invite:${token}`,
       { tenantId, email: dto.email, role: dto.role, fullName: dto.fullName },
-      259200,
+      INVITE_TTL,
     );
 
     if (process.env.NODE_ENV === 'development') {
@@ -405,7 +420,7 @@ export class AuthService {
     if (!invite)
       throw new BadRequestException('Невалидное или просроченное приглашение');
 
-    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const user = await this.prisma.user.create({
       data: {
         tenantId: invite.tenantId,
@@ -448,7 +463,7 @@ export class AuthService {
     await this.redis.del(`session:${userId}:${sessionId}`);
     const sessions = await this.getSessions(userId);
     const updated = sessions.filter((s: any) => s.id !== sessionId);
-    await this.redis.set(`session-list:${userId}`, updated, 604800);
+    await this.redis.set(`session-list:${userId}`, updated, SESSION_TTL);
     return { message: 'Сессия отозвана' };
   }
 
@@ -508,13 +523,13 @@ export class AuthService {
       createdAt: new Date().toISOString(),
     };
 
-    await this.redis.set(`session:${userId}:${hash}`, sessionData, 604800);
+    await this.redis.set(`session:${userId}:${hash}`, sessionData, SESSION_TTL);
 
     const sessions =
       (await this.redis.get<any[]>(`session-list:${userId}`)) || [];
     sessions.push(sessionData);
     const trimmed = sessions.slice(-10);
-    await this.redis.set(`session-list:${userId}`, trimmed, 604800);
+    await this.redis.set(`session-list:${userId}`, trimmed, SESSION_TTL);
 
     await this.prisma.user.update({
       where: { id: userId },

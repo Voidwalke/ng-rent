@@ -30,7 +30,9 @@ export class PrismaService
   async setTenant(tenantId: number) {
     const id = Number(tenantId);
     if (!Number.isInteger(id) || id <= 0) {
-      throw new Error('Invalid tenantId');
+      throw new Error(
+        `Invalid tenantId: expected positive integer, got ${tenantId}`,
+      );
     }
     await this.$executeRawUnsafe(`SET app.current_tenant = '${id}'`);
   }
