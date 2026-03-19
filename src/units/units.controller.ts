@@ -35,8 +35,11 @@ export class UnitsController {
   @Get(':id')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Получить помещение' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.unitsService.findOne(id);
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.unitsService.findOne(id, tenantId);
   }
 
   @Post()

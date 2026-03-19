@@ -27,8 +27,11 @@ export class ApplicationsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Детали заявки' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.applicationsService.findOne(id);
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.applicationsService.findOne(id, tenantId);
   }
 
   @Post()

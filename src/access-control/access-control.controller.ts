@@ -43,8 +43,11 @@ export class AccessControlController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Получить карту' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.accessControlService.findOne(id);
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.accessControlService.findOne(id, tenantId);
   }
 
   @Post()

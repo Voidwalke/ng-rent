@@ -10,7 +10,7 @@ import { RedisService } from '../redis/redis.service';
 describe('AuthService', () => {
   let service: AuthService;
 
-  const mockPrisma = {
+  const mockPrisma: any = {
     tenant: { findUnique: jest.fn(), create: jest.fn() },
     user: {
       findUnique: jest.fn(),

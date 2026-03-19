@@ -68,7 +68,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    await this.channel.consume(queue, async (msg) => {
+    await this.channel.consume(queue, async (msg: any) => {
       if (!msg) return;
 
       try {

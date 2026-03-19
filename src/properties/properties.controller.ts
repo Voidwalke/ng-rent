@@ -54,8 +54,11 @@ export class PropertiesController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Получить объект с помещениями' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.propertiesService.findOne(id);
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.propertiesService.findOne(id, tenantId);
   }
 
   @Get(':id/stats')

@@ -30,8 +30,11 @@ export class UsersController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Получить пользователя' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.usersService.findOne(id);
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.usersService.findOne(id, tenantId);
   }
 
   @Post()

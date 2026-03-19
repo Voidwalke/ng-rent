@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { Public } from '../common/decorators';
 import { Integration1CService } from './integration-1c.service';
 import { Integration1CProvider } from './integration-1c.provider';
+import { PaymentWebhookDto, ClientWebhookDto } from './dto';
 
 @ApiTags('Интеграция 1С')
 @Controller('integration/1c')
@@ -26,7 +27,8 @@ export class Integration1CController {
   }
 
   private validateWebhookSecret(secret: string | undefined) {
-    if (!this.webhookSecret) return;
+    if (!this.webhookSecret)
+      throw new UnauthorizedException('Webhook secret not configured');
     if (secret !== this.webhookSecret) {
       throw new UnauthorizedException('Invalid webhook secret');
     }
@@ -36,13 +38,7 @@ export class Integration1CController {
   @Post('webhook/payment')
   @ApiOperation({ summary: 'Webhook: подтверждение оплаты из 1С' })
   async paymentWebhook(
-    @Body()
-    body: {
-      invoiceNumber: string;
-      paidAmount: number;
-      paidAt: string;
-      paymentReference: string;
-    },
+    @Body() body: PaymentWebhookDto,
     @Headers('x-webhook-secret') secret: string,
   ) {
     this.validateWebhookSecret(secret);
@@ -53,14 +49,7 @@ export class Integration1CController {
   @Post('webhook/client')
   @ApiOperation({ summary: 'Webhook: обновление контрагента из 1С' })
   async clientWebhook(
-    @Body()
-    body: {
-      inn: string;
-      companyName?: string;
-      legalAddress?: string;
-      bankAccount?: string;
-      bik?: string;
-    },
+    @Body() body: ClientWebhookDto,
     @Headers('x-webhook-secret') secret: string,
   ) {
     this.validateWebhookSecret(secret);

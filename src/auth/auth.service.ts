@@ -308,7 +308,10 @@ export class AuthService {
   async refresh(dto: RefreshDto) {
     try {
       const payload = this.jwt.verify<JwtPayload>(dto.refreshToken, {
-        secret: this.config.get('JWT_SECRET'),
+        secret: this.config.get(
+          'JWT_REFRESH_SECRET',
+          this.config.get('JWT_SECRET'),
+        ),
       });
 
       const sessionKey = `session:${payload.userId}:${this.hashToken(dto.refreshToken)}`;
@@ -505,6 +508,10 @@ export class AuthService {
         expiresIn: this.config.get('JWT_ACCESS_TTL', '15m'),
       }),
       this.jwt.signAsync(payload, {
+        secret: this.config.get(
+          'JWT_REFRESH_SECRET',
+          this.config.get('JWT_SECRET'),
+        ),
         expiresIn: this.config.get('JWT_REFRESH_TTL', '7d'),
       }),
     ]);
@@ -538,6 +545,6 @@ export class AuthService {
   }
 
   private hashToken(token: string): string {
-    return crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);
+    return crypto.createHash('sha256').update(token).digest('hex');
   }
 }

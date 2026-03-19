@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 describe('ContractsService', () => {
   let service: ContractsService;
 
-  const mockPrisma = {
+  const mockPrisma: any = {
     contract: {
       findMany: jest.fn(),
       findUnique: jest.fn(),

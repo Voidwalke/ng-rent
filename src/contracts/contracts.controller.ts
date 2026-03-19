@@ -25,8 +25,11 @@ export class ContractsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Детали договора' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.contractsService.findOne(id);
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.contractsService.findOne(id, tenantId);
   }
 
   @Post(':applicationId/generate')

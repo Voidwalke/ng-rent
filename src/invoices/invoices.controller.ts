@@ -48,8 +48,11 @@ export class InvoicesController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Детали счёта' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.invoicesService.findOne(id);
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.invoicesService.findOne(id, tenantId);
   }
 
   @Post(':id/pay')

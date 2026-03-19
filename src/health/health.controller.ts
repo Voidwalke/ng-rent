@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import {
   HealthCheck,
@@ -43,7 +43,10 @@ export class HealthController {
       await this.prisma.$queryRaw`SELECT 1`;
       return { status: 'ready' };
     } catch {
-      return { status: 'not_ready' };
+      throw new HttpException(
+        { status: 'not_ready' },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
   }
 }

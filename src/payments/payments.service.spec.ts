@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 describe('PaymentsService', () => {
   let service: PaymentsService;
 
-  const mockPrisma = {
+  const mockPrisma: any = {
     invoice: { findFirst: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     payment: {
       create: jest.fn(),
