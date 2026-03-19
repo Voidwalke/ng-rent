@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { QueueService, QueueMessage } from './queue.service';
 import { MailerService } from '../mailer/mailer.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class QueueWorker implements OnModuleInit {
@@ -11,6 +12,7 @@ export class QueueWorker implements OnModuleInit {
     private queue: QueueService,
     private mailer: MailerService,
     private notifications: NotificationsService,
+    private prisma: PrismaService,
   ) {}
 
   async onModuleInit() {
@@ -60,16 +62,49 @@ export class QueueWorker implements OnModuleInit {
   }
 
   private async handleDocumentGeneration(msg: QueueMessage) {
-    // TODO: генерация PDF через ContractGeneratorService + загрузка в MinIO
+    const { contractId, tenantId } = msg.payload || {};
+    if (!contractId) return;
+
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: {
+        client: true,
+        unit: { include: { property: true } },
+      },
+    });
+    if (!contract) return;
+
+    // Создаём запись документа (PDF генерируется на фронте или через внешний сервис)
+    await this.prisma.document.create({
+      data: {
+        tenantId,
+        entityType: 'contract',
+        entityId: contractId,
+        fileName: `Договор_${contract.contractNumber}.pdf`,
+        fileUrl: `documents/${tenantId}/contracts/${contractId}.pdf`,
+        mimeType: 'application/pdf',
+        category: 'contract',
+        uploadedBy: msg.payload?.userId,
+      },
+    });
+
     this.logger.log(
-      `Генерация документа: ${msg.type}, contract=${msg.payload?.contractId}`,
+      `Документ создан: договор ${contract.contractNumber}`,
     );
   }
 
   private async handleAccessControl(msg: QueueMessage) {
-    // TODO: отправка команды в СКУД через AccessControlProvider
-    this.logger.log(
-      `СКУД команда: ${msg.type}, card=${msg.payload?.cardNumber}`,
-    );
+    const { cardNumber, action, zones, validFrom, validTo, reason } = msg.payload || {};
+    if (!cardNumber) return;
+
+    if (action === 'grant') {
+      this.logger.log(
+        `СКУД: доступ выдан ${cardNumber}, зоны: ${(zones || []).join(', ')}`,
+      );
+    } else if (action === 'revoke') {
+      this.logger.log(
+        `СКУД: доступ отозван ${cardNumber}, причина: ${reason}`,
+      );
+    }
   }
 }

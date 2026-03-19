@@ -24,6 +24,7 @@ import {
   VerifyEmailDto,
 } from './dto';
 import { JwtPayload } from './jwt.strategy';
+import { MailerService } from '../mailer/mailer.service';
 
 /** Время жизни OTP-кода (секунды) */
 const OTP_TTL = 300;
@@ -49,6 +50,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly redis: RedisService,
+    private readonly mailer: MailerService,
   ) {}
 
   /** Регистрирует нового тенанта и администратора */
@@ -79,6 +81,22 @@ export class AuthService {
           role: 'admin',
           emailVerified: false,
           lastLoginAt: new Date(),
+        },
+      });
+
+      const now = new Date();
+      const trialEnd = new Date(now);
+      trialEnd.setDate(trialEnd.getDate() + 14);
+
+      await tx.subscription.create({
+        data: {
+          tenantId: tenant.id,
+          plan: 'free',
+          priceMonthly: 0,
+          status: 'trialing',
+          currentPeriodStart: now,
+          currentPeriodEnd: trialEnd,
+          trialEndsAt: trialEnd,
         },
       });
 
@@ -132,10 +150,8 @@ export class AuthService {
         { expiresIn: '5m' },
       );
 
-      // TODO: отправка OTP по email через MailerService
-      if (process.env.NODE_ENV === 'development') {
-        this.logger.debug(`OTP: ${otp}`);
-      }
+      await this.mailer.send(user.email, 'Код подтверждения', 'otp', { code: otp });
+      this.logger.debug(`OTP отправлен на ${user.email}`);
 
       return { requires2fa: true, tempToken };
     }
@@ -237,9 +253,8 @@ export class AuthService {
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
     await this.redis.set(`otp:${userId}`, otpHash, OTP_TTL);
 
-    if (process.env.NODE_ENV === 'development') {
-      this.logger.debug(`OTP: ${otp}`);
-    }
+    await this.mailer.send(user.email, 'Код подтверждения', 'otp', { code: otp });
+    this.logger.debug(`OTP отправлен на ${user.email}`);
     return { message: 'Код отправлен на email' };
   }
 
@@ -271,10 +286,13 @@ export class AuthService {
   async sendVerificationEmail(userId: number, _email: string) {
     const token = crypto.randomBytes(32).toString('hex');
     await this.redis.set(`email-verify:${token}`, userId, EMAIL_VERIFY_TTL);
-    // TODO: отправка email через MailerService
-    if (process.env.NODE_ENV === 'development') {
-      this.logger.debug(`Email verification token generated`);
-    }
+    const frontendUrl = this.config.get('FRONTEND_URL', 'http://localhost:5173');
+    const verifyUrl = `${frontendUrl}/auth/verify-email?token=${token}`;
+    await this.mailer.send(_email, 'Подтверждение email', 'welcome', {
+      userName: 'пользователь',
+      tenantName: '',
+    });
+    this.logger.debug(`Email verification отправлен на ${_email}`);
   }
 
   /** Подтверждает email по токену из письма */
@@ -358,9 +376,10 @@ export class AuthService {
     const token = crypto.randomBytes(32).toString('hex');
     await this.redis.set(`reset:${token}`, user.id, RESET_TOKEN_TTL);
 
-    if (process.env.NODE_ENV === 'development') {
-      this.logger.debug(`Reset token generated`);
-    }
+    const frontendUrl = this.config.get('FRONTEND_URL', 'http://localhost:5173');
+    const resetUrl = `${frontendUrl}/auth/reset-password?token=${token}`;
+    await this.mailer.send(user.email, 'Сброс пароля', 'reset-password', { resetUrl });
+    this.logger.debug(`Reset email отправлен на ${user.email}`);
     return { message: 'Если email существует, ссылка для сброса отправлена' };
   }
 
@@ -412,9 +431,13 @@ export class AuthService {
       INVITE_TTL,
     );
 
-    if (process.env.NODE_ENV === 'development') {
-      this.logger.debug(`Invite token generated`);
-    }
+    const frontendUrl = this.config.get('FRONTEND_URL', 'http://localhost:5173');
+    const inviteUrl = `${frontendUrl}/auth/accept-invite?token=${token}`;
+    await this.mailer.send(dto.email, 'Приглашение в NG RENT', 'invite', {
+      tenantName: '',
+      inviteUrl,
+    });
+    this.logger.debug(`Приглашение отправлено на ${dto.email}`);
     return { message: 'Приглашение отправлено', email: dto.email };
   }
 

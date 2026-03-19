@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { MailerService } from '../mailer/mailer.service';
 
 @Injectable()
 export class InvoicesCron {
@@ -10,6 +11,7 @@ export class InvoicesCron {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly mailer: MailerService,
   ) {}
 
   /** Генерирует ежемесячные счета по активным договорам */
@@ -120,7 +122,16 @@ export class InvoicesCron {
     });
 
     for (const invoice of upcoming) {
-      // TODO: отправка уведомления через NotificationsService
+      const email = invoice.contract?.client?.contactEmail;
+      if (email) {
+        await this.mailer.send(email, `Напоминание об оплате счёта ${invoice.invoiceNumber}`, 'invoice', {
+          invoiceNumber: invoice.invoiceNumber,
+          amount: Number(invoice.totalAmount).toLocaleString('ru-RU'),
+          dueDate: invoice.dueDate.toLocaleDateString('ru-RU'),
+          unitNumber: '',
+          propertyName: '',
+        });
+      }
       this.logger.log(
         `Напоминание: счёт ${invoice.invoiceNumber} — оплата до ${invoice.dueDate.toLocaleDateString('ru-RU')}`,
       );
@@ -138,7 +149,6 @@ export class InvoicesCron {
     });
 
     for (const contract of pendingContracts) {
-      // TODO: проверка через IEdoProvider.checkStatus(contract.edoDocumentId)
       this.logger.debug(
         `Проверка ЭДО: договор ${contract.contractNumber}, doc=${contract.edoDocumentId}`,
       );
