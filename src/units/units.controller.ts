@@ -57,31 +57,44 @@ export class UnitsController {
   @ApiBearerAuth()
   @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Обновить помещение' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUnitDto) {
-    return this.unitsService.update(id, dto);
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateUnitDto,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.unitsService.update(id, dto, tenantId);
   }
 
   @Patch(':id/maintenance')
   @ApiBearerAuth()
   @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Перевести на обслуживание' })
-  setMaintenance(@Param('id', ParseIntPipe) id: number) {
-    return this.unitsService.setMaintenance(id);
+  setMaintenance(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.unitsService.setMaintenance(id, tenantId);
   }
 
   @Patch(':id/available')
   @ApiBearerAuth()
   @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Вернуть из обслуживания' })
-  setAvailable(@Param('id', ParseIntPipe) id: number) {
-    return this.unitsService.setAvailable(id);
+  setAvailable(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.unitsService.setAvailable(id, tenantId);
   }
 
   @Delete(':id')
   @ApiBearerAuth()
   @Roles(UserRole.admin)
   @ApiOperation({ summary: 'Удалить помещение' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.unitsService.remove(id);
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.unitsService.remove(id, tenantId);
   }
 }

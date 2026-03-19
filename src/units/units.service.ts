@@ -86,7 +86,7 @@ export class UnitsService {
       where: { id, ...(tenantId && { tenantId }), deletedAt: null },
       include: { property: true },
     });
-    if (!unit || unit.deletedAt) {
+    if (!unit) {
       throw new NotFoundException('Помещение не найдено');
     }
     return unit;
@@ -98,14 +98,14 @@ export class UnitsService {
     });
   }
 
-  async update(id: number, dto: UpdateUnitDto) {
-    await this.findOne(id);
+  async update(id: number, dto: UpdateUnitDto, tenantId?: number) {
+    await this.findOne(id, tenantId);
     return this.prisma.unit.update({ where: { id }, data: dto });
   }
 
   /** Перевести помещение на обслуживание */
-  async setMaintenance(id: number) {
-    const unit = await this.findOne(id);
+  async setMaintenance(id: number, tenantId?: number) {
+    const unit = await this.findOne(id, tenantId);
     if (unit.status === 'rented') {
       throw new BadRequestException(
         'Нельзя перевести арендованное помещение на обслуживание',
@@ -118,8 +118,8 @@ export class UnitsService {
   }
 
   /** Вернуть помещение из обслуживания */
-  async setAvailable(id: number) {
-    const unit = await this.findOne(id);
+  async setAvailable(id: number, tenantId?: number) {
+    const unit = await this.findOne(id, tenantId);
     if (unit.status !== 'maintenance') {
       throw new BadRequestException('Помещение не на обслуживании');
     }
@@ -129,8 +129,8 @@ export class UnitsService {
     });
   }
 
-  async remove(id: number) {
-    await this.findOne(id);
+  async remove(id: number, tenantId?: number) {
+    await this.findOne(id, tenantId);
     return this.prisma.unit.update({
       where: { id },
       data: { deletedAt: new Date() },

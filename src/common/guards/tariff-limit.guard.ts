@@ -9,9 +9,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 // Лимиты по тарифам
 const LIMITS: Record<string, Record<string, number>> = {
-  free: { properties: 3, units: 10, users: 1 },
-  basic: { properties: 10, units: 50, users: 5 },
-  pro: { properties: 50, units: 500, users: 20 },
+  free: { properties: 1, units: 10, users: 2 },
+  basic: { properties: 3, units: 50, users: 5 },
+  pro: { properties: 10, units: 200, users: 20 },
   enterprise: { properties: -1, units: -1, users: -1 }, // без лимита
 };
 

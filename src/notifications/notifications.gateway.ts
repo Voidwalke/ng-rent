@@ -11,7 +11,11 @@ import { ConfigService } from '@nestjs/config';
 
 @WebSocketGateway({
   namespace: '/notifications',
-  cors: { origin: '*' },
+  cors: {
+    origin: process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(',')
+      : 'http://localhost:3000',
+  },
 })
 export class NotificationsGateway
   implements OnGatewayConnection, OnGatewayDisconnect

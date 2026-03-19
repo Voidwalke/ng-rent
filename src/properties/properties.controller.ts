@@ -63,8 +63,11 @@ export class PropertiesController {
 
   @Get(':id/stats')
   @ApiOperation({ summary: 'Статистика занятости объекта' })
-  getStats(@Param('id', ParseIntPipe) id: number) {
-    return this.propertiesService.getStats(id);
+  getStats(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.propertiesService.getStats(id, tenantId);
   }
 
   @Post()
@@ -85,22 +88,29 @@ export class PropertiesController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePropertyDto,
+    @CurrentUser('tenantId') tenantId: number,
   ) {
-    return this.propertiesService.update(id, dto);
+    return this.propertiesService.update(id, dto, tenantId);
   }
 
   @Patch(':id/publish')
   @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Опубликовать объект' })
-  publish(@Param('id', ParseIntPipe) id: number) {
-    return this.propertiesService.publish(id);
+  publish(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.propertiesService.publish(id, tenantId);
   }
 
   @Patch(':id/unpublish')
   @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Снять объект с публикации' })
-  unpublish(@Param('id', ParseIntPipe) id: number) {
-    return this.propertiesService.unpublish(id);
+  unpublish(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.propertiesService.unpublish(id, tenantId);
   }
 
   @Delete(':id')
@@ -108,7 +118,10 @@ export class PropertiesController {
   @ApiOperation({ summary: 'Удалить объект (soft delete)' })
   @ApiResponse({ status: 200, description: 'Объект удалён' })
   @ApiResponse({ status: 404, description: 'Объект не найден' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.propertiesService.remove(id);
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.propertiesService.remove(id, tenantId);
   }
 }

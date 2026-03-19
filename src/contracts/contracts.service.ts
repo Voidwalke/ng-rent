@@ -93,8 +93,8 @@ export class ContractsService {
   }
 
   // Подписание — создаём первый счёт и карту СКУД
-  async sign(id: number) {
-    const contract = await this.findOne(id);
+  async sign(id: number, tenantId?: number) {
+    const contract = await this.findOne(id, tenantId);
     if (contract.status !== 'draft' && contract.status !== 'sent') {
       throw new BadRequestException(
         'Договор нельзя подписать в текущем статусе',
@@ -186,8 +186,8 @@ export class ContractsService {
     });
   }
 
-  async terminate(id: number, reason?: string) {
-    const contract = await this.findOne(id);
+  async terminate(id: number, reason?: string, tenantId?: number) {
+    const contract = await this.findOne(id, tenantId);
     if (!['active', 'signed'].includes(contract.status)) {
       throw new BadRequestException(
         'Нельзя расторгнуть договор в текущем статусе',
@@ -218,6 +218,14 @@ export class ContractsService {
           blockedAt: new Date(),
         },
       });
+
+      // Обновляем статус заявки
+      if (contract.applicationId) {
+        await tx.application.update({
+          where: { id: contract.applicationId },
+          data: { status: 'rejected' },
+        });
+      }
 
       // Отменяем неоплаченные счета
       await tx.invoice.updateMany({

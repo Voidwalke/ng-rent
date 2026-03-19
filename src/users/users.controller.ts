@@ -48,13 +48,20 @@ export class UsersController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Обновить пользователя' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(id, dto);
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateUserDto,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.usersService.update(id, dto, tenantId);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Удалить пользователя' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.usersService.remove(id);
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.usersService.remove(id, tenantId);
   }
 }

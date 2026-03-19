@@ -48,14 +48,20 @@ export class ContractsController {
   @Patch(':id/sign')
   @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Подписать договор' })
-  sign(@Param('id', ParseIntPipe) id: number) {
-    return this.contractsService.sign(id);
+  sign(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.contractsService.sign(id, tenantId);
   }
 
   @Patch(':id/terminate')
   @Roles(UserRole.admin)
   @ApiOperation({ summary: 'Расторгнуть договор' })
-  terminate(@Param('id', ParseIntPipe) id: number) {
-    return this.contractsService.terminate(id);
+  terminate(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.contractsService.terminate(id, undefined, tenantId);
   }
 }

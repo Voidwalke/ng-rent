@@ -43,7 +43,7 @@ export class AuditLogInterceptor implements NestInterceptor {
           await this.prisma.auditLog.create({
             data: {
               tenantId: user.tenantId,
-              userId: user.userId,
+              userId: user.id,
               action: actionMap[method] || method.toLowerCase(),
               entityType,
               entityId,
@@ -51,8 +51,9 @@ export class AuditLogInterceptor implements NestInterceptor {
               ipAddress: request.ip,
             },
           });
-        } catch {
-          // Ошибка аудита не должна ронять запрос
+        } catch (err) {
+          // Ошибка аудита не должна ронять запрос, но логируем
+          console.error('AuditLog error:', err);
         }
       }),
     );

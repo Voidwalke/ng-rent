@@ -24,7 +24,7 @@ export class UsersService {
 
   async findOne(id: number, tenantId?: number) {
     const user = await this.prisma.user.findFirst({
-      where: { id, ...(tenantId && { tenantId }) },
+      where: { id, ...(tenantId && { tenantId }), deletedAt: null },
       select: {
         id: true,
         email: true,
@@ -35,7 +35,7 @@ export class UsersService {
         createdAt: true,
       },
     });
-    if (!user || (user as any).deletedAt) {
+    if (!user) {
       throw new NotFoundException('Пользователь не найден');
     }
     return user;
@@ -60,8 +60,8 @@ export class UsersService {
     });
   }
 
-  async update(id: number, dto: UpdateUserDto) {
-    await this.findOne(id);
+  async update(id: number, dto: UpdateUserDto, tenantId?: number) {
+    await this.findOne(id, tenantId);
     return this.prisma.user.update({
       where: { id },
       data: dto,
@@ -74,8 +74,8 @@ export class UsersService {
     });
   }
 
-  async remove(id: number) {
-    await this.findOne(id);
+  async remove(id: number, tenantId?: number) {
+    await this.findOne(id, tenantId);
     // мягкое удаление
     return this.prisma.user.update({
       where: { id },

@@ -39,30 +39,31 @@ export class ApplicationsService {
   }
 
   async create(tenantId: number, dto: CreateApplicationDto) {
-    // Проверяем что помещение свободно
-    const unit = await this.prisma.unit.findUnique({
-      where: { id: dto.unitId },
-    });
-    if (!unit || unit.status !== 'available') {
-      throw new BadRequestException('Помещение недоступно для аренды');
-    }
+    return this.prisma.$transaction(async (tx) => {
+      const unit = await tx.unit.findUnique({
+        where: { id: dto.unitId },
+      });
+      if (!unit || unit.status !== 'available') {
+        throw new BadRequestException('Помещение недоступно для аренды');
+      }
 
-    return this.prisma.application.create({
-      data: {
-        tenantId,
-        unitId: dto.unitId,
-        clientId: dto.clientId,
-        desiredStart: new Date(dto.desiredStart),
-        desiredEnd: new Date(dto.desiredEnd),
-        comment: dto.comment,
-        status: 'draft',
-      },
+      return tx.application.create({
+        data: {
+          tenantId,
+          unitId: dto.unitId,
+          clientId: dto.clientId,
+          desiredStart: new Date(dto.desiredStart),
+          desiredEnd: new Date(dto.desiredEnd),
+          comment: dto.comment,
+          status: 'draft',
+        },
+      });
     });
   }
 
   // Отправить заявку на рассмотрение
-  async submit(id: number) {
-    const app = await this.findOne(id);
+  async submit(id: number, tenantId?: number) {
+    const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'submitted');
     return this.prisma.application.update({
       where: { id },
@@ -71,8 +72,8 @@ export class ApplicationsService {
   }
 
   // Взять в работу
-  async review(id: number, userId: number) {
-    const app = await this.findOne(id);
+  async review(id: number, userId: number, tenantId?: number) {
+    const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'under_review');
     return this.prisma.application.update({
       where: { id },
@@ -84,29 +85,36 @@ export class ApplicationsService {
   }
 
   // Одобрить — потом через очередь сгенерится договор
-  async approve(id: number, userId: number) {
-    const app = await this.findOne(id);
+  async approve(id: number, userId: number, tenantId?: number) {
+    const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'approved');
 
-    // Резервируем помещение
-    await this.prisma.unit.update({
-      where: { id: app.unitId },
-      data: { status: 'reserved' },
-    });
+    // Резервируем помещение атомарно
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.unit.updateMany({
+        where: { id: app.unitId, status: 'available' },
+        data: { status: 'reserved' },
+      });
+      if (updated.count === 0) {
+        throw new BadRequestException(
+          'Помещение уже занято или зарезервировано',
+        );
+      }
 
-    return this.prisma.application.update({
-      where: { id },
-      data: {
-        status: 'approved',
-        reviewedById: userId,
-        reviewedAt: new Date(),
-      },
+      return tx.application.update({
+        where: { id },
+        data: {
+          status: 'approved',
+          reviewedById: userId,
+          reviewedAt: new Date(),
+        },
+      });
     });
   }
 
   // Отклонить
-  async reject(id: number, userId: number) {
-    const app = await this.findOne(id);
+  async reject(id: number, userId: number, tenantId?: number) {
+    const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'rejected');
 
     return this.prisma.application.update({

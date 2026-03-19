@@ -1,4 +1,11 @@
-import { Controller, Get, Param, Query, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  ParseIntPipe,
+  NotFoundException,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { UnitsService } from './units.service';
 import { FilterUnitDto } from './dto/filter-unit.dto';
@@ -66,7 +73,7 @@ export class CatalogController {
         tenant: { select: { name: true } },
       },
     });
-    if (!property) throw new Error('Объект не найден');
+    if (!property) throw new NotFoundException('Объект не найден');
     return property;
   }
 

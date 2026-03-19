@@ -385,7 +385,8 @@ export class AuthService {
   /** Меняет пароль авторизованного пользователя */
   async changePassword(userId: number, dto: ChangePasswordDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    const valid = await bcrypt.compare(dto.currentPassword, user!.passwordHash);
+    if (!user) throw new UnauthorizedException('Пользователь не найден');
+    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
     if (!valid) throw new BadRequestException('Неверный текущий пароль');
 
     const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);

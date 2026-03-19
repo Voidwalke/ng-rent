@@ -33,7 +33,7 @@ export class PropertiesService {
       where: { id, ...(tenantId && { tenantId }), deletedAt: null },
       include: { units: { where: { deletedAt: null } } },
     });
-    if (!property || property.deletedAt) {
+    if (!property) {
       throw new NotFoundException('Объект не найден');
     }
     return property;
@@ -45,14 +45,14 @@ export class PropertiesService {
     });
   }
 
-  async update(id: number, dto: UpdatePropertyDto) {
-    await this.findOne(id);
+  async update(id: number, dto: UpdatePropertyDto, tenantId?: number) {
+    await this.findOne(id, tenantId);
     return this.prisma.property.update({ where: { id }, data: dto });
   }
 
   /** Публикация объекта в каталоге */
-  async publish(id: number) {
-    await this.findOne(id);
+  async publish(id: number, tenantId?: number) {
+    await this.findOne(id, tenantId);
     return this.prisma.property.update({
       where: { id },
       data: { isPublished: true },
@@ -60,8 +60,8 @@ export class PropertiesService {
   }
 
   /** Снятие с публикации */
-  async unpublish(id: number) {
-    await this.findOne(id);
+  async unpublish(id: number, tenantId?: number) {
+    await this.findOne(id, tenantId);
     return this.prisma.property.update({
       where: { id },
       data: { isPublished: false },
@@ -69,8 +69,8 @@ export class PropertiesService {
   }
 
   /** Статистика по объекту — занятость */
-  async getStats(id: number) {
-    await this.findOne(id);
+  async getStats(id: number, tenantId?: number) {
+    await this.findOne(id, tenantId);
 
     const units = await this.prisma.unit.groupBy({
       by: ['status'],
@@ -105,8 +105,8 @@ export class PropertiesService {
     };
   }
 
-  async remove(id: number) {
-    await this.findOne(id);
+  async remove(id: number, tenantId?: number) {
+    await this.findOne(id, tenantId);
     return this.prisma.property.update({
       where: { id },
       data: { deletedAt: new Date() },

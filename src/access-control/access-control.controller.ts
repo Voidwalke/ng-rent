@@ -71,19 +71,26 @@ export class AccessControlController {
   block(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { reason: string },
+    @CurrentUser('tenantId') tenantId: number,
   ) {
-    return this.accessControlService.block(id, body.reason);
+    return this.accessControlService.block(id, body.reason, tenantId);
   }
 
   @Patch(':id/unblock')
   @ApiOperation({ summary: 'Разблокировать карту' })
-  unblock(@Param('id', ParseIntPipe) id: number) {
-    return this.accessControlService.unblock(id);
+  unblock(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.accessControlService.unblock(id, tenantId);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Удалить карту' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.accessControlService.remove(id);
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.accessControlService.remove(id, tenantId);
   }
 }

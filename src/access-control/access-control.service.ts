@@ -79,8 +79,8 @@ export class AccessControlService {
   }
 
   /** Блокирует карту доступа */
-  async block(id: number, reason: string) {
-    const card = await this.findOne(id);
+  async block(id: number, reason: string, tenantId?: number) {
+    const card = await this.findOne(id, tenantId);
 
     await this.provider.revokeAccess({
       cardNumber: card.cardNumber,
@@ -94,8 +94,8 @@ export class AccessControlService {
   }
 
   /** Разблокирует карту доступа */
-  async unblock(id: number) {
-    const card = await this.findOne(id);
+  async unblock(id: number, tenantId?: number) {
+    const card = await this.findOne(id, tenantId);
 
     await this.provider.grantAccess({
       cardNumber: card.cardNumber,
@@ -116,8 +116,8 @@ export class AccessControlService {
   }
 
   /** Удаляет карту доступа и отзывает доступ в СКУД */
-  async remove(id: number) {
-    const card = await this.findOne(id);
+  async remove(id: number, tenantId?: number) {
+    const card = await this.findOne(id, tenantId);
     await this.provider.revokeAccess({
       cardNumber: card.cardNumber,
       reason: 'Карта удалена',

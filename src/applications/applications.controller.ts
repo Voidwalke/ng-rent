@@ -45,8 +45,11 @@ export class ApplicationsController {
 
   @Patch(':id/submit')
   @ApiOperation({ summary: 'Отправить заявку на рассмотрение' })
-  submit(@Param('id', ParseIntPipe) id: number) {
-    return this.applicationsService.submit(id);
+  submit(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.applicationsService.submit(id, tenantId);
   }
 
   @Patch(':id/review')
@@ -55,8 +58,9 @@ export class ApplicationsController {
   review(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('userId') userId: number,
+    @CurrentUser('tenantId') tenantId: number,
   ) {
-    return this.applicationsService.review(id, userId);
+    return this.applicationsService.review(id, userId, tenantId);
   }
 
   @Patch(':id/approve')
@@ -65,8 +69,9 @@ export class ApplicationsController {
   approve(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('userId') userId: number,
+    @CurrentUser('tenantId') tenantId: number,
   ) {
-    return this.applicationsService.approve(id, userId);
+    return this.applicationsService.approve(id, userId, tenantId);
   }
 
   @Patch(':id/reject')
@@ -75,7 +80,8 @@ export class ApplicationsController {
   reject(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('userId') userId: number,
+    @CurrentUser('tenantId') tenantId: number,
   ) {
-    return this.applicationsService.reject(id, userId);
+    return this.applicationsService.reject(id, userId, tenantId);
   }
 }

@@ -60,14 +60,23 @@ export class InvoicesController {
   pay(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { paidAmount?: number; paymentReference?: string },
+    @CurrentUser('tenantId') tenantId: number,
   ) {
-    return this.invoicesService.pay(id, body.paidAmount, body.paymentReference);
+    return this.invoicesService.pay(
+      id,
+      body.paidAmount,
+      body.paymentReference,
+      tenantId,
+    );
   }
 
   @Patch(':id/cancel')
   @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Отменить счёт' })
-  cancel(@Param('id', ParseIntPipe) id: number) {
-    return this.invoicesService.cancel(id);
+  cancel(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.invoicesService.cancel(id, tenantId);
   }
 }

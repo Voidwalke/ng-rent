@@ -66,8 +66,13 @@ export class InvoicesService {
   }
 
   /** Подтверждает оплату счёта */
-  async pay(id: number, paidAmount?: number, paymentReference?: string) {
-    const invoice = await this.findOne(id);
+  async pay(
+    id: number,
+    paidAmount?: number,
+    paymentReference?: string,
+    tenantId?: number,
+  ) {
+    const invoice = await this.findOne(id, tenantId);
     if (invoice.status === 'paid') {
       throw new BadRequestException('Счёт уже оплачен');
     }
@@ -116,8 +121,8 @@ export class InvoicesService {
   }
 
   /** Отменяет неоплаченный счёт */
-  async cancel(id: number) {
-    const invoice = await this.findOne(id);
+  async cancel(id: number, tenantId?: number) {
+    const invoice = await this.findOne(id, tenantId);
     if (!['pending', 'overdue'].includes(invoice.status)) {
       throw new BadRequestException('Можно отменить только неоплаченный счёт');
     }
