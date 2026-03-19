@@ -6,9 +6,9 @@ import {
   Headers,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
-import { Public } from '../common/decorators';
+import { Public, CurrentUser, Roles } from '../common/decorators';
 import { Integration1CService } from './integration-1c.service';
 import { Integration1CProvider } from './integration-1c.provider';
 import { PaymentWebhookDto, ClientWebhookDto } from './dto';
@@ -54,6 +54,14 @@ export class Integration1CController {
   ) {
     this.validateWebhookSecret(secret);
     return this.service.handleClientUpdate(body);
+  }
+
+  @Post('export')
+  @Roles('admin')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Ручной экспорт счетов и договоров в 1С' })
+  async exportAll(@CurrentUser('tenantId') tenantId: number) {
+    return this.service.exportAll(tenantId);
   }
 
   @Get('health')

@@ -101,6 +101,78 @@ export class Integration1CService {
     }
   }
 
+  /** Ручной экспорт всех неотправленных счетов и договоров */
+  async exportAll(tenantId: number) {
+    const invoices = await this.prisma.invoice.findMany({
+      where: { tenantId, paymentReference: null, status: 'pending' },
+      include: {
+        contract: {
+          include: { client: true, unit: { include: { property: true } } },
+        },
+      },
+    });
+
+    let invoicesSent = 0;
+    for (const invoice of invoices) {
+      const result = await this.provider.exportEntity({
+        type: 'invoice',
+        tenantId,
+        entityId: invoice.id,
+        data: {
+          invoiceNumber: invoice.invoiceNumber,
+          amount: Number(invoice.amount),
+          vatAmount: Number(invoice.vatAmount),
+          totalAmount: Number(invoice.totalAmount),
+          dueDate: invoice.dueDate,
+          clientInn: invoice.contract.client.inn,
+          clientName: invoice.contract.client.companyName,
+          propertyAddress: invoice.contract.unit.property.address,
+          unitNumber: invoice.contract.unit.unitNumber,
+        },
+      });
+      if (result.success && result.externalId) {
+        await this.prisma.invoice.update({
+          where: { id: invoice.id },
+          data: { paymentReference: `1c:${result.externalId}` },
+        });
+        invoicesSent++;
+      }
+    }
+
+    const contracts = await this.prisma.contract.findMany({
+      where: { tenantId, status: 'signed', edoStatus: null },
+      include: { client: true, unit: { include: { property: true } } },
+    });
+
+    let contractsSent = 0;
+    for (const contract of contracts) {
+      const result = await this.provider.exportEntity({
+        type: 'contract',
+        tenantId,
+        entityId: contract.id,
+        data: {
+          contractNumber: contract.contractNumber,
+          startDate: contract.startDate,
+          endDate: contract.endDate,
+          monthlyRent: Number(contract.monthlyRent),
+          depositAmount: Number(contract.depositAmount),
+          clientInn: contract.client.inn,
+          clientName: contract.client.companyName,
+        },
+      });
+      if (result.success) contractsSent++;
+    }
+
+    this.logger.log(
+      `Ручной экспорт в 1С: ${invoicesSent}/${invoices.length} счетов, ${contractsSent}/${contracts.length} договоров`,
+    );
+
+    return {
+      invoices: { total: invoices.length, sent: invoicesSent },
+      contracts: { total: contracts.length, sent: contractsSent },
+    };
+  }
+
   /** Обрабатывает вебхук подтверждения оплаты из 1С */
   async handlePaymentWebhook(
     body: {
