@@ -6,6 +6,7 @@ import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { MailerService } from '../mailer/mailer.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -18,6 +19,7 @@ describe('AuthService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
+    subscription: { create: jest.fn() },
     $transaction: jest.fn((fn) => fn(mockPrisma)),
   };
 
@@ -45,6 +47,10 @@ describe('AuthService', () => {
     keys: jest.fn().mockResolvedValue([]),
   };
 
+  const mockMailer = {
+    send: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -53,6 +59,7 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: mockJwt },
         { provide: ConfigService, useValue: mockConfig },
         { provide: RedisService, useValue: mockRedis },
+        { provide: MailerService, useValue: mockMailer },
       ],
     }).compile();
 

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PropertiesService } from './properties.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 describe('PropertiesService', () => {
   let service: PropertiesService;
@@ -14,7 +15,14 @@ describe('PropertiesService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
-    unit: { count: jest.fn(), aggregate: jest.fn() },
+    unit: { count: jest.fn(), aggregate: jest.fn(), groupBy: jest.fn() },
+  };
+
+  const mockRedis = {
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn(),
+    del: jest.fn(),
+    delByPattern: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -22,6 +30,7 @@ describe('PropertiesService', () => {
       providers: [
         PropertiesService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: RedisService, useValue: mockRedis },
       ],
     }).compile();
 
