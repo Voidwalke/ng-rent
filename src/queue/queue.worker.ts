@@ -88,13 +88,12 @@ export class QueueWorker implements OnModuleInit {
       },
     });
 
-    this.logger.log(
-      `Документ создан: договор ${contract.contractNumber}`,
-    );
+    this.logger.log(`Документ создан: договор ${contract.contractNumber}`);
   }
 
   private async handleAccessControl(msg: QueueMessage) {
-    const { cardNumber, action, zones, validFrom, validTo, reason } = msg.payload || {};
+    const { cardNumber, action, zones, _validFrom, _validTo, reason } =
+      msg.payload || {};
     if (!cardNumber) return;
 
     if (action === 'grant') {
@@ -102,9 +101,7 @@ export class QueueWorker implements OnModuleInit {
         `СКУД: доступ выдан ${cardNumber}, зоны: ${(zones || []).join(', ')}`,
       );
     } else if (action === 'revoke') {
-      this.logger.log(
-        `СКУД: доступ отозван ${cardNumber}, причина: ${reason}`,
-      );
+      this.logger.log(`СКУД: доступ отозван ${cardNumber}, причина: ${reason}`);
     }
   }
 }

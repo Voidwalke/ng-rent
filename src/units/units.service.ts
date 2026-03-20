@@ -5,15 +5,25 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { FilterUnitDto } from './dto/filter-unit.dto';
 
+const CACHE_TTL = 600; // 10 минут
+
 @Injectable()
 export class UnitsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
 
   async findAll(tenantId: number, filter: FilterUnitDto) {
+    const cacheKey = `units:list:${tenantId}:${JSON.stringify(filter)}`;
+    const cached = await this.redis.get<any>(cacheKey);
+    if (cached) return cached;
+
     const where: Prisma.UnitWhereInput = {
       tenantId,
       deletedAt: null,
@@ -42,11 +52,23 @@ export class UnitsService {
       this.prisma.unit.count({ where }),
     ]);
 
-    return { data, total, page, limit, pages: Math.ceil(total / limit) };
+    const result = {
+      data,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+    };
+    await this.redis.set(cacheKey, result, CACHE_TTL);
+    return result;
   }
 
   /** Публичный каталог — только опубликованные и доступные */
   async findCatalog(filter: FilterUnitDto) {
+    const cacheKey = `units:catalog:${JSON.stringify(filter)}`;
+    const cached = await this.redis.get<any>(cacheKey);
+    if (cached) return cached;
+
     const where: Prisma.UnitWhereInput = {
       status: 'available',
       deletedAt: null,
@@ -78,10 +100,26 @@ export class UnitsService {
       this.prisma.unit.count({ where }),
     ]);
 
-    return { data, total, page, limit, pages: Math.ceil(total / limit) };
+    const result = {
+      data,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+    };
+    await this.redis.set(cacheKey, result, CACHE_TTL);
+    return result;
   }
 
   async findOne(id: number, tenantId?: number) {
+    const cacheKey = `units:${id}`;
+    const cached = await this.redis.get<any>(cacheKey);
+    if (cached) {
+      if (tenantId && cached.tenantId !== tenantId)
+        throw new NotFoundException('Помещение не найдено');
+      return cached;
+    }
+
     const unit = await this.prisma.unit.findFirst({
       where: { id, ...(tenantId && { tenantId }), deletedAt: null },
       include: { property: true },
@@ -89,18 +127,24 @@ export class UnitsService {
     if (!unit) {
       throw new NotFoundException('Помещение не найдено');
     }
+
+    await this.redis.set(cacheKey, unit, CACHE_TTL);
     return unit;
   }
 
   async create(tenantId: number, dto: CreateUnitDto) {
-    return this.prisma.unit.create({
+    const result = await this.prisma.unit.create({
       data: { ...dto, tenantId },
     });
+    await this.invalidateCache(tenantId);
+    return result;
   }
 
   async update(id: number, dto: UpdateUnitDto, tenantId?: number) {
     await this.findOne(id, tenantId);
-    return this.prisma.unit.update({ where: { id }, data: dto });
+    const result = await this.prisma.unit.update({ where: { id }, data: dto });
+    await this.invalidateCache(result.tenantId, id);
+    return result;
   }
 
   /** Перевести помещение на обслуживание */
@@ -111,10 +155,12 @@ export class UnitsService {
         'Нельзя перевести арендованное помещение на обслуживание',
       );
     }
-    return this.prisma.unit.update({
+    const result = await this.prisma.unit.update({
       where: { id },
       data: { status: 'maintenance' },
     });
+    await this.invalidateCache(unit.tenantId, id);
+    return result;
   }
 
   /** Вернуть помещение из обслуживания */
@@ -123,17 +169,28 @@ export class UnitsService {
     if (unit.status !== 'maintenance') {
       throw new BadRequestException('Помещение не на обслуживании');
     }
-    return this.prisma.unit.update({
+    const result = await this.prisma.unit.update({
       where: { id },
       data: { status: 'available' },
     });
+    await this.invalidateCache(unit.tenantId, id);
+    return result;
   }
 
   async remove(id: number, tenantId?: number) {
-    await this.findOne(id, tenantId);
-    return this.prisma.unit.update({
+    const unit = await this.findOne(id, tenantId);
+    const result = await this.prisma.unit.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
+    await this.invalidateCache(unit.tenantId, id);
+    return result;
+  }
+
+  /** Инвалидация кэша помещений */
+  private async invalidateCache(tenantId: number, unitId?: number) {
+    await this.redis.delByPattern(`units:list:${tenantId}:*`);
+    await this.redis.delByPattern('units:catalog:*');
+    if (unitId) await this.redis.del(`units:${unitId}`);
   }
 }

@@ -150,7 +150,9 @@ export class AuthService {
         { expiresIn: '5m' },
       );
 
-      await this.mailer.send(user.email, 'Код подтверждения', 'otp', { code: otp });
+      await this.mailer.send(user.email, 'Код подтверждения', 'otp', {
+        code: otp,
+      });
       this.logger.debug(`OTP отправлен на ${user.email}`);
 
       return { requires2fa: true, tempToken };
@@ -253,7 +255,9 @@ export class AuthService {
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
     await this.redis.set(`otp:${userId}`, otpHash, OTP_TTL);
 
-    await this.mailer.send(user.email, 'Код подтверждения', 'otp', { code: otp });
+    await this.mailer.send(user.email, 'Код подтверждения', 'otp', {
+      code: otp,
+    });
     this.logger.debug(`OTP отправлен на ${user.email}`);
     return { message: 'Код отправлен на email' };
   }
@@ -286,8 +290,11 @@ export class AuthService {
   async sendVerificationEmail(userId: number, _email: string) {
     const token = crypto.randomBytes(32).toString('hex');
     await this.redis.set(`email-verify:${token}`, userId, EMAIL_VERIFY_TTL);
-    const frontendUrl = this.config.get('FRONTEND_URL', 'http://localhost:5173');
-    const verifyUrl = `${frontendUrl}/auth/verify-email?token=${token}`;
+    const frontendUrl = this.config.get(
+      'FRONTEND_URL',
+      'http://localhost:5173',
+    );
+    const _verifyUrl = `${frontendUrl}/auth/verify-email?token=${token}`;
     await this.mailer.send(_email, 'Подтверждение email', 'welcome', {
       userName: 'пользователь',
       tenantName: '',
@@ -376,9 +383,14 @@ export class AuthService {
     const token = crypto.randomBytes(32).toString('hex');
     await this.redis.set(`reset:${token}`, user.id, RESET_TOKEN_TTL);
 
-    const frontendUrl = this.config.get('FRONTEND_URL', 'http://localhost:5173');
+    const frontendUrl = this.config.get(
+      'FRONTEND_URL',
+      'http://localhost:5173',
+    );
     const resetUrl = `${frontendUrl}/auth/reset-password?token=${token}`;
-    await this.mailer.send(user.email, 'Сброс пароля', 'reset-password', { resetUrl });
+    await this.mailer.send(user.email, 'Сброс пароля', 'reset-password', {
+      resetUrl,
+    });
     this.logger.debug(`Reset email отправлен на ${user.email}`);
     return { message: 'Если email существует, ссылка для сброса отправлена' };
   }
@@ -431,7 +443,10 @@ export class AuthService {
       INVITE_TTL,
     );
 
-    const frontendUrl = this.config.get('FRONTEND_URL', 'http://localhost:5173');
+    const frontendUrl = this.config.get(
+      'FRONTEND_URL',
+      'http://localhost:5173',
+    );
     const inviteUrl = `${frontendUrl}/auth/accept-invite?token=${token}`;
     await this.mailer.send(dto.email, 'Приглашение в NG RENT', 'invite', {
       tenantName: '',

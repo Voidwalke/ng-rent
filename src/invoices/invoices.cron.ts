@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { MailerService } from '../mailer/mailer.service';
+import { EdoService } from '../contracts/edo.service';
 
 @Injectable()
 export class InvoicesCron {
@@ -12,6 +13,7 @@ export class InvoicesCron {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly mailer: MailerService,
+    private readonly edo: EdoService,
   ) {}
 
   /** Генерирует ежемесячные счета по активным договорам */
@@ -124,13 +126,18 @@ export class InvoicesCron {
     for (const invoice of upcoming) {
       const email = invoice.contract?.client?.contactEmail;
       if (email) {
-        await this.mailer.send(email, `Напоминание об оплате счёта ${invoice.invoiceNumber}`, 'invoice', {
-          invoiceNumber: invoice.invoiceNumber,
-          amount: Number(invoice.totalAmount).toLocaleString('ru-RU'),
-          dueDate: invoice.dueDate.toLocaleDateString('ru-RU'),
-          unitNumber: '',
-          propertyName: '',
-        });
+        await this.mailer.send(
+          email,
+          `Напоминание об оплате счёта ${invoice.invoiceNumber}`,
+          'invoice',
+          {
+            invoiceNumber: invoice.invoiceNumber,
+            amount: Number(invoice.totalAmount).toLocaleString('ru-RU'),
+            dueDate: invoice.dueDate.toLocaleDateString('ru-RU'),
+            unitNumber: '',
+            propertyName: '',
+          },
+        );
       }
       this.logger.log(
         `Напоминание: счёт ${invoice.invoiceNumber} — оплата до ${invoice.dueDate.toLocaleDateString('ru-RU')}`,
@@ -144,14 +151,9 @@ export class InvoicesCron {
   /** Проверяет статусы документов в ЭДО */
   @Cron('*/30 * * * *')
   async checkEdoStatuses() {
-    const pendingContracts = await this.prisma.contract.findMany({
-      where: { edoStatus: 'pending', edoDocumentId: { not: null } },
-    });
-
-    for (const contract of pendingContracts) {
-      this.logger.debug(
-        `Проверка ЭДО: договор ${contract.contractNumber}, doc=${contract.edoDocumentId}`,
-      );
+    const { checked, updated } = await this.edo.checkAllPendingStatuses();
+    if (checked > 0) {
+      this.logger.log(`ЭДО: проверено ${checked}, обновлено ${updated}`);
     }
   }
 
