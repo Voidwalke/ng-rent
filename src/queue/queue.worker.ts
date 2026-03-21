@@ -1,8 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Inject } from '@nestjs/common';
 import { QueueService, QueueMessage } from './queue.service';
 import { MailerService } from '../mailer/mailer.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ContractGeneratorService } from '../contracts/contract-generator.service';
+import type { IAccessControlProvider } from '../access-control/access-control.provider';
 
 @Injectable()
 export class QueueWorker implements OnModuleInit {
@@ -13,6 +15,9 @@ export class QueueWorker implements OnModuleInit {
     private mailer: MailerService,
     private notifications: NotificationsService,
     private prisma: PrismaService,
+    private contractGenerator: ContractGeneratorService,
+    @Inject('ACCESS_CONTROL_PROVIDER')
+    private accessProvider: IAccessControlProvider,
   ) {}
 
   async onModuleInit() {
@@ -74,33 +79,58 @@ export class QueueWorker implements OnModuleInit {
     });
     if (!contract) return;
 
-    // Создаём запись документа (PDF генерируется на фронте или через внешний сервис)
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId || contract.tenantId },
+    });
+
+    // Генерируем PDF через ContractGeneratorService
+    const pdfBuffer = await this.contractGenerator.generatePdf({
+      tenant: tenant || {},
+      client: contract.client || {},
+      property: contract.unit?.property || {},
+      unit: contract.unit || {},
+      contract,
+    });
+
     await this.prisma.document.create({
       data: {
-        tenantId,
+        tenantId: contract.tenantId,
         entityType: 'contract',
         entityId: contractId,
         fileName: `Договор_${contract.contractNumber}.pdf`,
-        fileUrl: `documents/${tenantId}/contracts/${contractId}.pdf`,
+        fileUrl: `documents/${contract.tenantId}/contracts/${contractId}.pdf`,
         mimeType: 'application/pdf',
         category: 'contract',
-        uploadedBy: msg.payload?.userId,
+        fileSize: pdfBuffer.length,
+        uploadedBy: msg.payload?.userId || 0,
       },
     });
 
-    this.logger.log(`Документ создан: договор ${contract.contractNumber}`);
+    this.logger.log(
+      `PDF сгенерирован: договор ${contract.contractNumber}, ${pdfBuffer.length} байт`,
+    );
   }
 
   private async handleAccessControl(msg: QueueMessage) {
-    const { cardNumber, action, zones, _validFrom, _validTo, reason } =
+    const { cardNumber, action, zones, validFrom, validTo, reason } =
       msg.payload || {};
     if (!cardNumber) return;
 
     if (action === 'grant') {
+      await this.accessProvider.grantAccess({
+        cardNumber,
+        zones: zones || [],
+        validFrom: validFrom ? new Date(validFrom) : new Date(),
+        validTo: validTo ? new Date(validTo) : new Date(),
+      });
       this.logger.log(
         `СКУД: доступ выдан ${cardNumber}, зоны: ${(zones || []).join(', ')}`,
       );
     } else if (action === 'revoke') {
+      await this.accessProvider.revokeAccess({
+        cardNumber,
+        reason: reason || 'Отозвано через очередь',
+      });
       this.logger.log(`СКУД: доступ отозван ${cardNumber}, причина: ${reason}`);
     }
   }

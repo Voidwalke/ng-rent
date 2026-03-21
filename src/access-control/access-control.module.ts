@@ -10,6 +10,6 @@ import { MockAccessControlProvider } from './access-control.provider';
     // Переключение через .env: ACCESS_CONTROL_PROVIDER=mock|hikvision|zkteco
     { provide: 'ACCESS_CONTROL_PROVIDER', useClass: MockAccessControlProvider },
   ],
-  exports: [AccessControlService],
+  exports: [AccessControlService, 'ACCESS_CONTROL_PROVIDER'],
 })
 export class AccessControlModule {}
