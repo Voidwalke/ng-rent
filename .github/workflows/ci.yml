@@ -62,7 +62,9 @@ jobs:
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           REDIS_HOST: localhost
+          REDIS_PORT: 6379
           JWT_SECRET: test-secret
+          RABBIT_URL: amqp://guest:guest@localhost:5672
       - uses: actions/upload-artifact@v4
         with:
           name: coverage
@@ -90,6 +92,27 @@ jobs:
         image: redis:7-alpine
         ports:
           - 6379:6379
+      rabbitmq:
+        image: rabbitmq:3-alpine
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      minio:
+        image: minio/minio:latest
+        ports:
+          - 9000:9000
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        options: >-
+          --health-cmd "mc ready local || exit 1"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -101,11 +124,19 @@ jobs:
       - run: npx prisma migrate deploy
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
-      - run: npm run test:e2e -- --forceExit
+      - run: npm run test:e2e -- --forceExit --runInBand --detectOpenHandles
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           REDIS_HOST: localhost
+          REDIS_PORT: 6379
           JWT_SECRET: test-secret
+          RABBIT_URL: amqp://guest:guest@localhost:5672
+          MINIO_ENDPOINT: localhost
+          MINIO_PORT: 9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+          MINIO_USE_SSL: 'false'
+          CORS_ORIGIN: http://localhost:3000
 
   build:
     name: Build & Docker
