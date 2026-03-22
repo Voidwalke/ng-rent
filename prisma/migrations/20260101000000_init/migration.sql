@@ -416,6 +416,7 @@ CREATE INDEX "applications_tenant_id_status_idx" ON "applications"("tenant_id", 
 CREATE INDEX "applications_unit_id_idx" ON "applications"("unit_id");
 CREATE UNIQUE INDEX "contracts_contract_number_key" ON "contracts"("contract_number");
 CREATE INDEX "contracts_tenant_id_status_idx" ON "contracts"("tenant_id", "status");
+CREATE UNIQUE INDEX "invoices_invoice_number_key" ON "invoices"("invoice_number");
 CREATE INDEX "invoices_tenant_id_status_idx" ON "invoices"("tenant_id", "status");
 CREATE INDEX "invoices_contract_id_idx" ON "invoices"("contract_id");
 CREATE INDEX "payments_tenant_id_idx" ON "payments"("tenant_id");
@@ -555,7 +556,6 @@ ALTER TABLE "contract_templates" ADD CONSTRAINT "contract_templates_tenant_id_fk
 ALTER TABLE "webhooks" ADD CONSTRAINT "webhooks_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- Row Level Security
-ALTER TABLE "tenants" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "users" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "properties" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "units" ENABLE ROW LEVEL SECURITY;
@@ -575,6 +575,7 @@ ALTER TABLE "support_tickets" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "maintenance_requests" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "contract_templates" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "webhooks" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "onboarding_progress" ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies (фильтрация по current_setting('app.current_tenant'))
 DO $$
@@ -586,7 +587,7 @@ BEGIN
       'users','properties','units','clients','applications','contracts',
       'invoices','payments','documents','notifications','access_cards',
       'audit_log','subscriptions','subscription_invoices','import_jobs','support_tickets',
-      'maintenance_requests','contract_templates','webhooks'
+      'maintenance_requests','contract_templates','webhooks','onboarding_progress'
     ])
   LOOP
     EXECUTE format(

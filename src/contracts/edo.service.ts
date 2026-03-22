@@ -172,6 +172,12 @@ export class EdoService {
     });
     if (!contract) return;
 
+    // Находим admin-пользователя тенанта для записи uploadedBy
+    const adminUser = await this.prisma.user.findFirst({
+      where: { tenantId: contract.tenantId, role: 'admin' },
+      select: { id: true },
+    });
+
     // Сохраняем подписанный документ
     await this.prisma.document.create({
       data: {
@@ -183,7 +189,7 @@ export class EdoService {
         mimeType: 'application/pdf',
         category: 'contract',
         fileSize: signedPdf.length,
-        uploadedBy: 0,
+        uploadedBy: adminUser?.id ?? 1,
       },
     });
 
