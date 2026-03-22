@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SubscriptionsService } from './subscriptions.service';
 import { CurrentUser, Public, Roles } from '../common/decorators';
-import { TenantPlan } from '@prisma/client';
+import { TenantPlan, UserRole } from '@prisma/client';
 
 @ApiTags('Подписки')
 @ApiBearerAuth()
@@ -24,14 +24,14 @@ export class SubscriptionsController {
   }
 
   @Post('change-plan')
-  @Roles('admin')
+  @Roles(UserRole.admin)
   @ApiOperation({ summary: 'Сменить тарифный план' })
   changePlan(@CurrentUser() user: any, @Body('plan') plan: TenantPlan) {
     return this.subscriptionsService.changePlan(user.tenantId, plan);
   }
 
   @Post('cancel')
-  @Roles('admin')
+  @Roles(UserRole.admin)
   @ApiOperation({ summary: 'Отменить подписку' })
   cancel(@CurrentUser() user: any, @Body('reason') reason?: string) {
     return this.subscriptionsService.cancel(user.tenantId, reason);

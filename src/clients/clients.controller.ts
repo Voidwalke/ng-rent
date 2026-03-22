@@ -56,6 +56,7 @@ export class ClientsController {
   }
 
   @Post()
+  @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Создать клиента' })
   create(
     @CurrentUser('tenantId') tenantId: number,
@@ -65,6 +66,7 @@ export class ClientsController {
   }
 
   @Patch(':id')
+  @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Обновить клиента' })
   update(
     @Param('id', ParseIntPipe) id: number,

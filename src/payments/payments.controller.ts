@@ -12,6 +12,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { YookassaWebhookDto } from './dto/yookassa-webhook.dto';
 import { CurrentUser, Public, Roles } from '../common/decorators';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Платежи')
 @Controller('payments')
@@ -20,6 +21,7 @@ export class PaymentsController {
 
   @Post('invoice/:invoiceId')
   @ApiBearerAuth()
+  @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Создать платёж по счёту' })
   createPayment(
     @CurrentUser() user: any,
@@ -30,7 +32,7 @@ export class PaymentsController {
 
   @Post('invoice/:invoiceId/refund')
   @ApiBearerAuth()
-  @Roles('admin', 'manager')
+  @Roles(UserRole.admin)
   @ApiOperation({ summary: 'Возврат платежа' })
   refund(
     @CurrentUser() user: any,

@@ -67,7 +67,7 @@ export class ApplicationsController {
   @ApiOperation({ summary: 'Взять заявку в работу' })
   review(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser('userId') userId: number,
+    @CurrentUser('id') userId: number,
     @CurrentUser('tenantId') tenantId: number,
   ) {
     return this.applicationsService.review(id, userId, tenantId);
@@ -78,7 +78,7 @@ export class ApplicationsController {
   @ApiOperation({ summary: 'Одобрить заявку' })
   approve(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser('userId') userId: number,
+    @CurrentUser('id') userId: number,
     @CurrentUser('tenantId') tenantId: number,
   ) {
     return this.applicationsService.approve(id, userId, tenantId);
@@ -89,7 +89,7 @@ export class ApplicationsController {
   @ApiOperation({ summary: 'Отклонить заявку' })
   reject(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser('userId') userId: number,
+    @CurrentUser('id') userId: number,
     @CurrentUser('tenantId') tenantId: number,
   ) {
     return this.applicationsService.reject(id, userId, tenantId);

@@ -9,6 +9,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { Public, CurrentUser, Roles } from '../common/decorators';
+import { UserRole } from '@prisma/client';
 import { Integration1CService } from './integration-1c.service';
 import { Integration1CProvider } from './integration-1c.provider';
 import { PaymentWebhookDto, ClientWebhookDto } from './dto';
@@ -57,7 +58,7 @@ export class Integration1CController {
   }
 
   @Post('export')
-  @Roles('admin')
+  @Roles(UserRole.admin)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Ручной экспорт счетов и договоров в 1С' })
   async exportAll(@CurrentUser('tenantId') tenantId: number) {

@@ -42,10 +42,10 @@ export class NotificationsController {
     });
   }
 
-  @Patch(':id/read')
-  @ApiOperation({ summary: 'Пометить как прочитанное' })
-  markAsRead(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
-    return this.notificationsService.markAsRead(user.id, id);
+  @Get('unread-count')
+  @ApiOperation({ summary: 'Количество непрочитанных' })
+  getUnreadCount(@CurrentUser() user: any) {
+    return this.notificationsService.getUnreadCount(user.id);
   }
 
   @Patch('read-all')
@@ -54,9 +54,9 @@ export class NotificationsController {
     return this.notificationsService.markAllRead(user.id);
   }
 
-  @Get('unread-count')
-  @ApiOperation({ summary: 'Количество непрочитанных' })
-  getUnreadCount(@CurrentUser() user: any) {
-    return this.notificationsService.getUnreadCount(user.id);
+  @Patch(':id/read')
+  @ApiOperation({ summary: 'Пометить как прочитанное' })
+  markAsRead(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
+    return this.notificationsService.markAsRead(user.id, id);
   }
 }

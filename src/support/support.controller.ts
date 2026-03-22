@@ -13,7 +13,7 @@ import { SupportService } from './support.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { AddMessageDto } from './dto/add-message.dto';
 import { CurrentUser, Roles } from '../common/decorators';
-import { TicketStatus } from '@prisma/client';
+import { TicketStatus, UserRole } from '@prisma/client';
 
 @ApiTags('Поддержка')
 @ApiBearerAuth()
@@ -62,14 +62,14 @@ export class SupportController {
   }
 
   @Patch('tickets/:id/resolve')
-  @Roles('admin', 'manager')
+  @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Решить тикет' })
   resolve(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
     return this.supportService.resolve(user.tenantId, id);
   }
 
   @Patch('tickets/:id/close')
-  @Roles('admin')
+  @Roles(UserRole.admin)
   @ApiOperation({ summary: 'Закрыть тикет' })
   close(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
     return this.supportService.close(user.tenantId, id);

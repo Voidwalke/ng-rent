@@ -59,6 +59,7 @@ export class InvoicesController {
   }
 
   @Post(':id/pay')
+  @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Подтвердить оплату' })
   pay(
     @Param('id', ParseIntPipe) id: number,

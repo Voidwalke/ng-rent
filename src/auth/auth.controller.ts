@@ -20,6 +20,7 @@ import {
   VerifyEmailDto,
 } from './dto';
 import { Public, CurrentUser, Roles } from '../common/decorators';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Авторизация')
 @Controller('auth')
@@ -140,7 +141,7 @@ export class AuthController {
 
   @Post('invite')
   @ApiBearerAuth()
-  @Roles('admin')
+  @Roles(UserRole.admin)
   @ApiOperation({ summary: 'Приглашение пользователя' })
   invite(@CurrentUser() user: any, @Body() dto: InviteUserDto) {
     return this.authService.inviteUser(user.tenantId, dto);

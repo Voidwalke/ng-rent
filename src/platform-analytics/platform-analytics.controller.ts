@@ -2,11 +2,12 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PlatformAnalyticsService } from './platform-analytics.service';
 import { Roles } from '../common/decorators';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Аналитика платформы (суперадмин)')
 @ApiBearerAuth()
 @Controller('platform/analytics')
-@Roles('super_admin')
+@Roles(UserRole.super_admin)
 export class PlatformAnalyticsController {
   constructor(private readonly analyticsService: PlatformAnalyticsService) {}
 

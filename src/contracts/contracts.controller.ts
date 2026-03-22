@@ -39,8 +39,21 @@ export class ContractsController {
 
   @Get()
   @ApiOperation({ summary: 'Список договоров' })
-  findAll(@CurrentUser('tenantId') tenantId: number) {
-    return this.contractsService.findAll(tenantId);
+  @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  findAll(
+    @CurrentUser('tenantId') tenantId: number,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.contractsService.findAll(
+      tenantId,
+      status,
+      page ? +page : undefined,
+      limit ? +limit : undefined,
+    );
   }
 
   @Get('expiring')
@@ -153,17 +166,22 @@ export class ContractsController {
   @Post(':id/edo/send')
   @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Отправить договор на подпись через ЭДО' })
-  sendToEdo(
+  async sendToEdo(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser('tenantId') _tenantId: number,
+    @CurrentUser('tenantId') tenantId: number,
   ) {
+    await this.contractsService.findOne(id, tenantId);
     return this.edo.sendForSigning(id);
   }
 
   @Get(':id/edo/status')
   @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Проверить статус подписания в ЭДО' })
-  checkEdoStatus(@Param('id', ParseIntPipe) id: number) {
+  async checkEdoStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    await this.contractsService.findOne(id, tenantId);
     return this.edo.checkStatus(id);
   }
 
@@ -173,8 +191,10 @@ export class ContractsController {
   @ApiProduces('application/pdf')
   async downloadSigned(
     @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
     @Res() res: Response,
   ) {
+    await this.contractsService.findOne(id, tenantId);
     const pdfBuffer = await this.edo.downloadSigned(id);
 
     res.set({

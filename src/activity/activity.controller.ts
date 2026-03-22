@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query, ParseIntPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ActivityService } from './activity.service';
 import { CurrentUser, Roles } from '../common/decorators';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Лента событий')
 @ApiBearerAuth()
@@ -10,7 +11,7 @@ export class ActivityController {
   constructor(private readonly activityService: ActivityService) {}
 
   @Get()
-  @Roles('admin', 'manager')
+  @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Лента последних событий организации' })
   getFeed(
     @CurrentUser() user: any,
@@ -25,7 +26,7 @@ export class ActivityController {
   }
 
   @Get(':entityType/:entityId')
-  @Roles('admin', 'manager')
+  @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'События по конкретной сущности' })
   getByEntity(
     @CurrentUser() user: any,

@@ -9,6 +9,7 @@ import {
   UploadedFile,
   ParseIntPipe,
   Body,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -20,6 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { DocumentsService } from './documents.service';
 import { CurrentUser, Roles } from '../common/decorators';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Документы')
 @ApiBearerAuth()
@@ -51,6 +53,15 @@ export class DocumentsController {
     @Body('entityId', ParseIntPipe) entityId: number,
     @Body('category') category?: string,
   ) {
+    if (!file) {
+      throw new BadRequestException('Файл обязателен');
+    }
+    const allowedEntityTypes = ['contract', 'property', 'unit', 'client', 'application'];
+    if (!entityType || !allowedEntityTypes.includes(entityType)) {
+      throw new BadRequestException(
+        `entityType должен быть одним из: ${allowedEntityTypes.join(', ')}`,
+      );
+    }
     return this.documentsService.upload(
       user.tenantId,
       user.id,
@@ -102,7 +113,7 @@ export class DocumentsController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Удалить документ' })
-  @Roles('admin', 'manager')
+  @Roles(UserRole.admin, UserRole.manager)
   remove(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
     return this.documentsService.remove(user.tenantId, id);
   }
