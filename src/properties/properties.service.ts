@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -14,6 +14,7 @@ export class PropertiesService {
     private readonly redis: RedisService,
   ) {}
 
+  /** Возвращает список объектов недвижимости арендатора с фильтрацией */
   async findAll(
     tenantId: number,
     filters?: { type?: string; city?: string; isPublished?: boolean },
@@ -41,6 +42,7 @@ export class PropertiesService {
     return result;
   }
 
+  /** Возвращает объект недвижимости по идентификатору */
   async findOne(id: number, tenantId?: number) {
     const cacheKey = `properties:${id}`;
     const cached = await this.redis.get<any>(cacheKey);
@@ -62,6 +64,7 @@ export class PropertiesService {
     return property;
   }
 
+  /** Создаёт новый объект недвижимости */
   async create(tenantId: number, dto: CreatePropertyDto) {
     const result = await this.prisma.property.create({
       data: { ...dto, tenantId },
@@ -70,6 +73,7 @@ export class PropertiesService {
     return result;
   }
 
+  /** Обновляет данные объекта недвижимости */
   async update(id: number, dto: UpdatePropertyDto, tenantId?: number) {
     await this.findOne(id, tenantId);
     const result = await this.prisma.property.update({
@@ -80,7 +84,7 @@ export class PropertiesService {
     return result;
   }
 
-  /** Публикация объекта в каталоге */
+  /** Публикует объект в каталоге */
   async publish(id: number, tenantId?: number) {
     const prop = await this.findOne(id, tenantId);
     const result = await this.prisma.property.update({
@@ -91,7 +95,7 @@ export class PropertiesService {
     return result;
   }
 
-  /** Снятие с публикации */
+  /** Снимает объект с публикации */
   async unpublish(id: number, tenantId?: number) {
     const prop = await this.findOne(id, tenantId);
     const result = await this.prisma.property.update({
@@ -102,7 +106,7 @@ export class PropertiesService {
     return result;
   }
 
-  /** Статистика по объекту — занятость */
+  /** Возвращает статистику по объекту — занятость */
   async getStats(id: number, tenantId?: number) {
     const cacheKey = `properties:stats:${id}`;
     const cached = await this.redis.get<any>(cacheKey);
@@ -146,8 +150,23 @@ export class PropertiesService {
     return result;
   }
 
+  /** Удаляет объект недвижимости (мягкое удаление) */
   async remove(id: number, tenantId?: number) {
     const prop = await this.findOne(id, tenantId);
+
+    // Блокируем удаление при наличии активных договоров
+    const activeContracts = await this.prisma.contract.count({
+      where: {
+        unit: { propertyId: id },
+        status: { in: ['draft', 'sent', 'signed', 'active'] },
+      },
+    });
+    if (activeContracts > 0) {
+      throw new BadRequestException(
+        `Нельзя удалить объект: есть активные договоры (${activeContracts})`,
+      );
+    }
+
     const result = await this.prisma.property.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -156,7 +175,7 @@ export class PropertiesService {
     return result;
   }
 
-  /** Инвалидация кэша объектов */
+  /** Инвалидирует кэш объектов */
   private async invalidateCache(tenantId: number, propertyId?: number) {
     await this.redis.delByPattern(`properties:list:${tenantId}:*`);
     if (propertyId) {

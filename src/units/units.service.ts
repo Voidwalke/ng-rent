@@ -19,6 +19,7 @@ export class UnitsService {
     private readonly redis: RedisService,
   ) {}
 
+  /** Возвращает список помещений арендатора с фильтрацией и пагинацией */
   async findAll(tenantId: number, filter: FilterUnitDto) {
     const cacheKey = `units:list:${tenantId}:${JSON.stringify(filter)}`;
     const cached = await this.redis.get<any>(cacheKey);
@@ -111,6 +112,7 @@ export class UnitsService {
     return result;
   }
 
+  /** Возвращает помещение по идентификатору */
   async findOne(id: number, tenantId?: number) {
     const cacheKey = `units:${id}`;
     const cached = await this.redis.get<any>(cacheKey);
@@ -132,6 +134,7 @@ export class UnitsService {
     return unit;
   }
 
+  /** Создаёт новое помещение */
   async create(tenantId: number, dto: CreateUnitDto) {
     const result = await this.prisma.unit.create({
       data: { ...dto, tenantId },
@@ -140,6 +143,7 @@ export class UnitsService {
     return result;
   }
 
+  /** Обновляет данные помещения */
   async update(id: number, dto: UpdateUnitDto, tenantId?: number) {
     await this.findOne(id, tenantId);
     const result = await this.prisma.unit.update({ where: { id }, data: dto });
@@ -147,7 +151,7 @@ export class UnitsService {
     return result;
   }
 
-  /** Перевести помещение на обслуживание */
+  /** Переводит помещение на обслуживание */
   async setMaintenance(id: number, tenantId?: number) {
     const unit = await this.findOne(id, tenantId);
     if (unit.status === 'rented') {
@@ -163,7 +167,7 @@ export class UnitsService {
     return result;
   }
 
-  /** Вернуть помещение из обслуживания */
+  /** Возвращает помещение из обслуживания */
   async setAvailable(id: number, tenantId?: number) {
     const unit = await this.findOne(id, tenantId);
     if (unit.status !== 'maintenance') {
@@ -177,8 +181,23 @@ export class UnitsService {
     return result;
   }
 
+  /** Удаляет помещение (мягкое удаление) */
   async remove(id: number, tenantId?: number) {
     const unit = await this.findOne(id, tenantId);
+
+    // Блокируем удаление при наличии активных договоров
+    const activeContracts = await this.prisma.contract.count({
+      where: {
+        unitId: id,
+        status: { in: ['draft', 'sent', 'signed', 'active'] },
+      },
+    });
+    if (activeContracts > 0) {
+      throw new BadRequestException(
+        `Нельзя удалить помещение: есть активные договоры (${activeContracts})`,
+      );
+    }
+
     const result = await this.prisma.unit.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -187,7 +206,7 @@ export class UnitsService {
     return result;
   }
 
-  /** Инвалидация кэша помещений */
+  /** Инвалидирует кэш помещений */
   private async invalidateCache(tenantId: number, unitId?: number) {
     await this.redis.delByPattern(`units:list:${tenantId}:*`);
     await this.redis.delByPattern('units:catalog:*');

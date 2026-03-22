@@ -191,7 +191,7 @@ export class ContractGeneratorService implements OnModuleDestroy {
     });
 
     const monthlyRent = Number(data.contract.monthlyRent);
-    const vatAmount = monthlyRent * 0.2;
+    const vatAmount = Math.round(monthlyRent * 0.2 * 100) / 100;
     const depositAmount = Number(data.contract.depositAmount || 0);
 
     return this.template({
@@ -216,7 +216,7 @@ export class ContractGeneratorService implements OnModuleDestroy {
     });
   }
 
-  /** Число прописью (упрощённо, целая часть) */
+  /** Переводит число в текст прописью (упрощённо, целая часть) */
   private numberToWords(n: number): string {
     if (n === 0) return 'ноль';
     const units = [

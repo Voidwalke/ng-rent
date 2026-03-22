@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 describe('InvoicesService', () => {
   let service: InvoicesService;
 
-  const mockPrisma = {
+  const mockPrisma: any = {
     invoice: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
@@ -16,6 +16,7 @@ describe('InvoicesService', () => {
       aggregate: jest.fn(),
     },
     accessCard: { updateMany: jest.fn() },
+    $transaction: jest.fn((fn: any) => fn(mockPrisma)),
   };
 
   beforeEach(async () => {

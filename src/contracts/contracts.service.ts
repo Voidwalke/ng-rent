@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ContractsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Возвращает список договоров с фильтрацией и пагинацией */
   async findAll(tenantId: number, status?: string, page = 1, limit = 50) {
     const where: any = { tenantId };
     if (status) where.status = status;
@@ -32,6 +33,7 @@ export class ContractsService {
     return { data, total, page, limit: take, pages: Math.ceil(total / take) };
   }
 
+  /** Возвращает договор по идентификатору */
   async findOne(id: number, tenantId?: number) {
     const contract = await this.prisma.contract.findFirst({
       where: { id, ...(tenantId && { tenantId }) },
@@ -71,7 +73,7 @@ export class ContractsService {
     }
   }
 
-  // Генерация договора после одобрения заявки
+  /** Генерирует договор на основе одобренной заявки */
   async generateFromApplication(applicationId: number, tenantId: number) {
     const app = await this.prisma.application.findUnique({
       where: { id: applicationId },
@@ -120,7 +122,7 @@ export class ContractsService {
     });
   }
 
-  // Подписание — создаём первый счёт, депозит и карту СКУД
+  /** Подписывает договор, создаёт первый счёт, депозит и карту СКУД */
   async sign(id: number, tenantId?: number) {
     const contract = await this.findOne(id, tenantId);
     if (contract.status !== 'draft' && contract.status !== 'sent') {
@@ -130,6 +132,9 @@ export class ContractsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Проверяем, что помещение не занято другим договором (защита от race condition)
+      await this.checkUnitOverlap(tx, contract.unitId, contract.startDate, contract.endDate, id);
+
       const updated = await tx.contract.update({
         where: { id },
         data: { status: 'signed', signedAt: new Date() },
@@ -150,8 +155,8 @@ export class ContractsService {
       // Первый счёт с НДС
       const amount = contract.monthlyRent;
       const vatRate = 0.2;
-      const vatAmount = Number(amount) * vatRate;
-      const totalAmount = Number(amount) + vatAmount;
+      const vatAmount = Math.round(Number(amount) * vatRate * 100) / 100;
+      const totalAmount = Math.round((Number(amount) + vatAmount) * 100) / 100;
       const dueDate = new Date(contract.startDate);
       dueDate.setDate(dueDate.getDate() + 14);
 
@@ -208,9 +213,9 @@ export class ContractsService {
     });
   }
 
-  // Активация договора
-  async activate(id: number) {
-    const contract = await this.findOne(id);
+  /** Активирует подписанный договор */
+  async activate(id: number, tenantId?: number) {
+    const contract = await this.findOne(id, tenantId);
     if (contract.status !== 'signed') {
       throw new BadRequestException(
         'Активировать можно только подписанный договор',
@@ -232,7 +237,7 @@ export class ContractsService {
     });
   }
 
-  /** Договоры с истекающим сроком (за N дней) */
+  /** Возвращает договоры с истекающим сроком (за N дней) */
   async findExpiring(tenantId: number, days = 30) {
     const now = new Date();
     const deadline = new Date();
@@ -252,7 +257,7 @@ export class ContractsService {
     });
   }
 
-  /** Продление договора — создаёт новый на основе старого */
+  /** Продлевает договор — создаёт новый на основе старого */
   async renew(id: number, tenantId: number, data: { newEndDate: string; newMonthlyRent?: number }) {
     const contract = await this.findOne(id, tenantId);
     if (!['signed', 'active'].includes(contract.status)) {
@@ -286,7 +291,7 @@ export class ContractsService {
           contractNumber,
           startDate: contract.endDate,
           endDate: new Date(data.newEndDate),
-          monthlyRent: data.newMonthlyRent || contract.monthlyRent,
+          monthlyRent: data.newMonthlyRent ?? contract.monthlyRent,
           status: 'signed',
           signedAt: new Date(),
         },
@@ -294,7 +299,7 @@ export class ContractsService {
     });
   }
 
-  /** Продление срока действия текущего договора */
+  /** Продлевает срок действия текущего договора */
   async extend(id: number, tenantId: number, newEndDate: string) {
     const contract = await this.findOne(id, tenantId);
     if (!['signed', 'active'].includes(contract.status)) {
@@ -315,6 +320,7 @@ export class ContractsService {
     });
   }
 
+  /** Расторгает договор, освобождает помещение и блокирует карты СКУД */
   async terminate(id: number, reason?: string, tenantId?: number) {
     const contract = await this.findOne(id, tenantId);
     if (!['active', 'signed'].includes(contract.status)) {
@@ -361,6 +367,33 @@ export class ContractsService {
         where: { contractId: id, status: { in: ['pending', 'overdue'] } },
         data: { status: 'cancelled' },
       });
+
+      // Кредит-ноты для оплаченных счетов за будущие периоды
+      const now = new Date();
+      const paidFutureInvoices = await tx.invoice.findMany({
+        where: {
+          contractId: id,
+          status: 'paid',
+          periodStart: { gt: now },
+          invoiceNumber: { not: { startsWith: 'DEP-' } },
+        },
+      });
+      for (const inv of paidFutureInvoices) {
+        const invCount = await tx.invoice.count({ where: { contractId: id } });
+        await tx.invoice.create({
+          data: {
+            tenantId: contract.tenantId,
+            contractId: id,
+            invoiceNumber: `CN-${inv.invoiceNumber}-${String(invCount + 1).padStart(3, '0')}`,
+            amount: -Number(inv.amount),
+            vatAmount: -Number(inv.vatAmount),
+            totalAmount: -Number(inv.totalAmount),
+            dueDate: new Date(Date.now() + 10 * 86400000),
+            status: 'paid',
+            paidAt: new Date(),
+          },
+        });
+      }
 
       // Возврат обеспечительного депозита — создаём кредит-ноту
       const depositAmount = contract.depositAmount ? Number(contract.depositAmount) : 0;

@@ -82,44 +82,55 @@ export class InvoicesService {
       throw new BadRequestException('Нельзя оплатить отменённый счёт');
     }
 
-    const updated = await this.prisma.invoice.update({
-      where: { id },
-      data: {
-        status: 'paid',
-        paidAt: new Date(),
-        paidAmount: paidAmount || invoice.totalAmount,
-        paymentReference,
-      },
-    });
+    const total = Number(invoice.totalAmount);
+    const alreadyPaid = Number(invoice.paidAmount) || 0;
+    const effectiveAmount = paidAmount ?? total;
+    if (effectiveAmount > total - alreadyPaid) {
+      throw new BadRequestException(
+        `Сумма оплаты (${effectiveAmount}) превышает остаток по счёту (${total - alreadyPaid})`,
+      );
+    }
 
-    // При оплате просроченного счёта проверяем остальные просрочки по договору
-    if (invoice.status === 'overdue') {
-      const otherOverdue = await this.prisma.invoice.count({
-        where: {
-          contractId: invoice.contractId,
-          status: 'overdue',
-          id: { not: id },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.invoice.update({
+        where: { id },
+        data: {
+          status: 'paid',
+          paidAt: new Date(),
+          paidAmount: paidAmount ?? invoice.totalAmount,
+          paymentReference,
         },
       });
 
-      if (otherOverdue === 0) {
-        await this.prisma.accessCard.updateMany({
+      // При оплате просроченного счёта проверяем остальные просрочки по договору
+      if (invoice.status === 'overdue') {
+        const otherOverdue = await tx.invoice.count({
           where: {
             contractId: invoice.contractId,
-            isActive: false,
-            blockedReason: { contains: 'Просрочка' },
-          },
-          data: {
-            isActive: true,
-            blockedReason: null,
-            blockedAt: null,
-            activatedAt: new Date(),
+            status: 'overdue',
+            id: { not: id },
           },
         });
-      }
-    }
 
-    return updated;
+        if (otherOverdue === 0) {
+          await tx.accessCard.updateMany({
+            where: {
+              contractId: invoice.contractId,
+              isActive: false,
+              blockedReason: { contains: 'Просрочка' },
+            },
+            data: {
+              isActive: true,
+              blockedReason: null,
+              blockedAt: null,
+              activatedAt: new Date(),
+            },
+          });
+        }
+      }
+
+      return updated;
+    });
   }
 
   /** Отменяет неоплаченный счёт */
@@ -146,8 +157,8 @@ export class InvoicesService {
     });
 
     const vatRate = 0.2;
-    const vatAmount = data.amount * vatRate;
-    const totalAmount = data.amount + vatAmount;
+    const vatAmount = Math.round(data.amount * vatRate * 100) / 100;
+    const totalAmount = Math.round((data.amount + vatAmount) * 100) / 100;
 
     return this.prisma.invoice.create({
       data: {
@@ -175,14 +186,20 @@ export class InvoicesService {
       where: { contractId: original.contractId },
     });
 
+    // Используем пропорцию НДС из оригинального счёта (может быть 0% для депозитов)
+    const origAmount = Number(original.amount);
+    const origVat = Number(original.vatAmount);
+    const vatRate = origAmount > 0 ? origVat / origAmount : 0;
+    const creditVat = Math.round(data.amount * vatRate * 100) / 100;
+
     return this.prisma.invoice.create({
       data: {
         tenantId,
         contractId: original.contractId,
         invoiceNumber: `CN-${original.invoiceNumber}-${String(count + 1).padStart(3, '0')}`,
         amount: -data.amount,
-        vatAmount: -(data.amount * 0.2),
-        totalAmount: -(data.amount * 1.2),
+        vatAmount: -creditVat,
+        totalAmount: -(data.amount + creditVat),
         dueDate: new Date(),
         status: 'paid',
         paidAt: new Date(),

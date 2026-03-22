@@ -45,8 +45,8 @@ export class InvoicesCron {
           const periodStart = new Date(today.getFullYear(), today.getMonth(), 1);
           const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
           const amount = contract.monthlyRent;
-          const vatAmount = Number(amount) * 0.2;
-          const totalAmount = Number(amount) + vatAmount;
+          const vatAmount = Math.round(Number(amount) * 0.2 * 100) / 100;
+          const totalAmount = Math.round((Number(amount) + vatAmount) * 100) / 100;
           const dueDate = new Date();
           dueDate.setDate(dueDate.getDate() + 14);
 

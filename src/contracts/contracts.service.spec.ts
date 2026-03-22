@@ -14,8 +14,9 @@ describe('ContractsService', () => {
       update: jest.fn(),
     },
     unit: { update: jest.fn() },
-    invoice: { updateMany: jest.fn() },
+    invoice: { updateMany: jest.fn(), findMany: jest.fn(), findFirst: jest.fn(), count: jest.fn(), create: jest.fn() },
     accessCard: { updateMany: jest.fn() },
+    application: { update: jest.fn() },
     notification: { create: jest.fn() },
     $transaction: jest.fn((fn) => fn(mockPrisma)),
   };
@@ -71,6 +72,8 @@ describe('ContractsService', () => {
         id: 1,
         status: 'active',
         unitId: 1,
+        tenantId: 1,
+        contractNumber: 'D-202601-0001',
       });
       mockPrisma.contract.update.mockResolvedValueOnce({
         id: 1,
@@ -78,6 +81,9 @@ describe('ContractsService', () => {
       });
       mockPrisma.unit.update.mockResolvedValueOnce({});
       mockPrisma.accessCard.updateMany.mockResolvedValueOnce({});
+      mockPrisma.invoice.updateMany.mockResolvedValueOnce({ count: 0 });
+      mockPrisma.invoice.findMany.mockResolvedValueOnce([]);
+      mockPrisma.invoice.findFirst.mockResolvedValueOnce(null);
 
       const result = await service.terminate(1, 'По соглашению сторон');
       expect(result).toHaveProperty('message');
