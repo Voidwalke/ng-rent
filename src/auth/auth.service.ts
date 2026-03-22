@@ -38,6 +38,10 @@ const SESSION_TTL = 604800;
 const EMAIL_VERIFY_TTL = 604800;
 /** Максимум попыток OTP */
 const MAX_OTP_ATTEMPTS = 5;
+/** Максимум неудачных попыток входа до блокировки */
+const MAX_LOGIN_ATTEMPTS = 5;
+/** Время блокировки аккаунта (секунды) */
+const LOGIN_LOCKOUT_TTL = 900;
 /** Количество раундов bcrypt */
 const BCRYPT_ROUNDS = 12;
 
@@ -55,6 +59,10 @@ export class AuthService {
 
   /** Регистрирует нового тенанта и администратора */
   async register(dto: RegisterDto) {
+    if (!dto.acceptTerms) {
+      throw new BadRequestException('Необходимо принять условия использования');
+    }
+
     const exists = await this.prisma.tenant.findUnique({
       where: { slug: dto.slug },
     });
@@ -125,14 +133,31 @@ export class AuthService {
 
   /** Аутентифицирует пользователя по email и паролю */
   async login(dto: LoginDto) {
+    // Проверка блокировки аккаунта
+    const lockKey = `login-lock:${dto.email}`;
+    const locked = await this.redis.get<number>(lockKey);
+    if (locked) {
+      throw new UnauthorizedException(
+        'Аккаунт временно заблокирован. Попробуйте через 15 минут',
+      );
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (!user || user.deletedAt)
+    if (!user || user.deletedAt) {
+      await this.trackLoginAttempt(dto.email);
       throw new UnauthorizedException('Неверный email или пароль');
+    }
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) throw new UnauthorizedException('Неверный email или пароль');
+    if (!valid) {
+      await this.trackLoginAttempt(dto.email);
+      throw new UnauthorizedException('Неверный email или пароль');
+    }
+
+    // Сброс счётчика при успешном входе
+    await this.redis.del(`login-attempts:${dto.email}`);
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: user.tenantId },
@@ -581,6 +606,16 @@ export class AuthService {
       where: { id: userId },
       data: { refreshToken: this.hashToken(refreshToken) },
     });
+  }
+
+  private async trackLoginAttempt(email: string) {
+    const key = `login-attempts:${email}`;
+    const attempts = ((await this.redis.get<number>(key)) || 0) + 1;
+    await this.redis.set(key, attempts, LOGIN_LOCKOUT_TTL);
+    if (attempts >= MAX_LOGIN_ATTEMPTS) {
+      await this.redis.set(`login-lock:${email}`, 1, LOGIN_LOCKOUT_TTL);
+      this.logger.warn(`Аккаунт ${email} заблокирован после ${attempts} неудачных попыток`);
+    }
   }
 
   private hashToken(token: string): string {

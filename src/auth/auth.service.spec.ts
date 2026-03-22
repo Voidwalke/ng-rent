@@ -80,6 +80,7 @@ describe('AuthService', () => {
       password: 'SecurePass123!',
       fullName: 'Test Admin',
       inn: '1234567890',
+      acceptTerms: true,
     };
 
     it('should throw ConflictException if slug is taken', async () => {
