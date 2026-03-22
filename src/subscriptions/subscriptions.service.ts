@@ -27,7 +27,7 @@ const PLAN_LIMITS: Record<
 export class SubscriptionsService {
   constructor(private prisma: PrismaService) {}
 
-  /** Текущая подписка тенанта */
+  /** Возвращает текущую подписку тенанта */
   async getCurrent(tenantId: number) {
     const sub = await this.prisma.subscription.findFirst({
       where: { tenantId, status: { in: ['active', 'trialing'] } },
@@ -44,7 +44,7 @@ export class SubscriptionsService {
     };
   }
 
-  /** Доступные тарифы */
+  /** Возвращает доступные тарифы */
   getPlans() {
     return Object.entries(PLAN_PRICES).map(([plan, price]) => ({
       plan,
@@ -53,7 +53,7 @@ export class SubscriptionsService {
     }));
   }
 
-  /** Смена тарифного плана */
+  /** Выполняет смену тарифного плана */
   async changePlan(tenantId: number, newPlan: TenantPlan) {
     const current = await this.prisma.subscription.findFirst({
       where: { tenantId, status: { in: ['active', 'trialing'] } },
@@ -75,10 +75,30 @@ export class SubscriptionsService {
         );
       }
     }
+    if (limits.properties > 0) {
+      const propsCount = await this.prisma.property.count({
+        where: { tenantId, deletedAt: null },
+      });
+      if (propsCount > limits.properties) {
+        throw new BadRequestException(
+          `Тариф ${newPlan} поддерживает макс. ${limits.properties} объектов, у вас ${propsCount}`,
+        );
+      }
+    }
+    if (limits.units > 0) {
+      const unitsCount = await this.prisma.unit.count({
+        where: { tenantId, deletedAt: null },
+      });
+      if (unitsCount > limits.units) {
+        throw new BadRequestException(
+          `Тариф ${newPlan} поддерживает макс. ${limits.units} помещений, у вас ${unitsCount}`,
+        );
+      }
+    }
 
     const now = new Date();
-    const periodEnd = new Date(now);
-    periodEnd.setMonth(periodEnd.getMonth() + 1);
+    // Безопасный расчёт +1 месяц (без overflow 31 янв → 3 марта)
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, Math.min(now.getDate(), 28));
 
     return this.prisma.$transaction(async (tx) => {
       // Завершаем текущую подписку
@@ -113,7 +133,7 @@ export class SubscriptionsService {
     });
   }
 
-  /** Отмена подписки */
+  /** Отменяет подписку */
   async cancel(tenantId: number, reason?: string) {
     const sub = await this.prisma.subscription.findFirst({
       where: { tenantId, status: { in: ['active', 'trialing'] } },
@@ -121,25 +141,40 @@ export class SubscriptionsService {
 
     if (!sub) throw new NotFoundException('Активная подписка не найдена');
 
-    await this.prisma.subscription.update({
-      where: { id: sub.id },
-      data: {
-        status: 'canceled',
-        canceledAt: new Date(),
-        cancelReason: reason || 'Отменено пользователем',
-      },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      await tx.subscription.update({
+        where: { id: sub.id },
+        data: {
+          status: 'canceled',
+          canceledAt: new Date(),
+          cancelReason: reason || 'Отменено пользователем',
+        },
+      });
 
-    // Переводим на free
-    await this.prisma.tenant.update({
-      where: { id: tenantId },
-      data: { plan: 'free' },
-    });
+      // Переводим на free и создаём бесплатную подписку
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: { plan: 'free' },
+      });
 
-    return { message: 'Подписка отменена, тариф переведён на free' };
+      const now = new Date();
+      const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, Math.min(now.getDate(), 28));
+      await tx.subscription.create({
+        data: {
+          tenantId,
+          plan: 'free',
+          priceMonthly: 0,
+          status: 'active',
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+        },
+      });
+
+      return { message: 'Подписка отменена, тариф переведён на free' };
+    });
   }
 
-  /** История счетов по подписке */
+  /** Возвращает историю счетов по подписке */
   async getInvoices(tenantId: number) {
     return this.prisma.subscriptionInvoice.findMany({
       where: { subscription: { tenantId } },

@@ -56,17 +56,28 @@ export class ComplianceService {
     const job = await this.prisma.dataExportJob.findUnique({
       where: { id: jobId },
     });
-    if (!job) return;
+    if (!job) {
+      this.logger.warn(`Экспорт job=${jobId} не найден`);
+      return;
+    }
 
     await this.prisma.dataExportJob.update({
       where: { id: jobId },
       data: { status: 'processing' },
     });
 
+    try {
     const user = await this.prisma.user.findUnique({
       where: { id: job.userId },
     });
-    if (!user) return;
+    if (!user) {
+      await this.prisma.dataExportJob.update({
+        where: { id: jobId },
+        data: { status: 'failed', completedAt: new Date() },
+      });
+      this.logger.warn(`Экспорт job=${jobId}: пользователь ${job.userId} не найден`);
+      return;
+    }
 
     // Собираем все персональные данные пользователя
     const [notifications, auditLogs, consents] = await Promise.all([
@@ -175,6 +186,13 @@ export class ComplianceService {
     this.logger.log(
       `Экспорт данных завершён: job=${jobId}, пользователь ${user.email}`,
     );
+    } catch (err) {
+      await this.prisma.dataExportJob.update({
+        where: { id: jobId },
+        data: { status: 'failed', completedAt: new Date() },
+      });
+      this.logger.error(`Экспорт job=${jobId} завершился с ошибкой: ${err.message}`);
+    }
   }
 
   /** Возвращает экспортированные данные пользователя */
@@ -193,7 +211,7 @@ export class ComplianceService {
     return this.exportCache.get(jobId) || null;
   }
 
-  /** Запрос на удаление аккаунта (soft delete) */
+  /** Обрабатывает запрос на удаление аккаунта (soft delete) */
   async requestAccountDeletion(userId: number) {
     await this.prisma.user.update({
       where: { id: userId },

@@ -319,10 +319,11 @@ export class AuthService {
       'FRONTEND_URL',
       'http://localhost:5173',
     );
-    const _verifyUrl = `${frontendUrl}/auth/verify-email?token=${token}`;
+    const verifyUrl = `${frontendUrl}/auth/verify-email?token=${token}`;
     await this.mailer.send(_email, 'Подтверждение email', 'welcome', {
       userName: 'пользователь',
       tenantName: '',
+      verifyUrl,
     });
     this.logger.debug(`Email verification отправлен на ${_email}`);
   }
@@ -385,10 +386,6 @@ export class AuthService {
         role: payload.role,
       });
       await this.saveSession(payload.userId, tokens.refreshToken, 'refresh');
-      await this.prisma.user.update({
-        where: { id: payload.userId },
-        data: { refreshToken: tokens.refreshToken },
-      });
 
       return tokens;
     } catch {
@@ -472,9 +469,10 @@ export class AuthService {
       'FRONTEND_URL',
       'http://localhost:5173',
     );
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
     const inviteUrl = `${frontendUrl}/auth/accept-invite?token=${token}`;
     await this.mailer.send(dto.email, 'Приглашение в NG RENT', 'invite', {
-      tenantName: '',
+      tenantName: tenant?.name || 'NG RENT',
       inviteUrl,
     });
     this.logger.debug(`Приглашение отправлено на ${dto.email}`);

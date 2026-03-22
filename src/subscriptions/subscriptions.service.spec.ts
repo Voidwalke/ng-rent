@@ -14,6 +14,8 @@ describe('SubscriptionsService', () => {
     subscriptionInvoice: { findMany: jest.fn() },
     tenant: { update: jest.fn() },
     user: { count: jest.fn() },
+    property: { count: jest.fn() },
+    unit: { count: jest.fn() },
     $transaction: jest.fn((fn) => fn(mockPrisma)),
   };
 
@@ -73,6 +75,8 @@ describe('SubscriptionsService', () => {
         status: 'active',
       });
       mockPrisma.user.count.mockResolvedValueOnce(2);
+      mockPrisma.property.count.mockResolvedValueOnce(1);
+      mockPrisma.unit.count.mockResolvedValueOnce(5);
       mockPrisma.subscription.update.mockResolvedValueOnce({});
       mockPrisma.subscription.create.mockResolvedValueOnce({
         id: 2,
@@ -108,6 +112,7 @@ describe('SubscriptionsService', () => {
       });
       mockPrisma.subscription.update.mockResolvedValueOnce({});
       mockPrisma.tenant.update.mockResolvedValueOnce({});
+      mockPrisma.subscription.create.mockResolvedValueOnce({ id: 2, plan: 'free' });
 
       const result = await service.cancel(1);
       expect(result.message).toContain('отменена');
