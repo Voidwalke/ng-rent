@@ -46,6 +46,29 @@ export class ContractsService {
     return contract;
   }
 
+  /** Проверяет, нет ли пересечения аренды на помещение */
+  private async checkUnitOverlap(
+    unitId: number,
+    startDate: Date,
+    endDate: Date,
+    excludeContractId?: number,
+  ) {
+    const where: any = {
+      unitId,
+      status: { in: ['draft', 'sent', 'signed', 'active'] },
+      startDate: { lt: endDate },
+      endDate: { gt: startDate },
+    };
+    if (excludeContractId) where.id = { not: excludeContractId };
+
+    const overlap = await this.prisma.contract.findFirst({ where });
+    if (overlap) {
+      throw new BadRequestException(
+        `Помещение уже занято по договору ${overlap.contractNumber} (${overlap.startDate.toISOString().slice(0, 10)} — ${overlap.endDate.toISOString().slice(0, 10)})`,
+      );
+    }
+  }
+
   // Генерация договора после одобрения заявки
   async generateFromApplication(applicationId: number, tenantId: number) {
     const app = await this.prisma.application.findUnique({
@@ -58,6 +81,9 @@ export class ContractsService {
         'Договор можно создать только по одобренной заявке',
       );
     }
+
+    // Защита от двойной аренды
+    await this.checkUnitOverlap(app.unitId, app.desiredStart, app.desiredEnd);
 
     return this.prisma.$transaction(async (tx) => {
       // Номер в формате D-{год}{месяц}-{порядковый}
@@ -92,7 +118,7 @@ export class ContractsService {
     });
   }
 
-  // Подписание — создаём первый счёт и карту СКУД
+  // Подписание — создаём первый счёт, депозит и карту СКУД
   async sign(id: number, tenantId?: number) {
     const contract = await this.findOne(id, tenantId);
     if (contract.status !== 'draft' && contract.status !== 'sent') {
@@ -144,6 +170,24 @@ export class ContractsService {
           dueDate,
         },
       });
+
+      // Счёт на обеспечительный депозит (если указан)
+      const depositAmount = contract.depositAmount ? Number(contract.depositAmount) : 0;
+      if (depositAmount > 0) {
+        await tx.invoice.create({
+          data: {
+            tenantId: contract.tenantId,
+            contractId: id,
+            invoiceNumber: `DEP-${contract.contractNumber}-001`,
+            amount: depositAmount,
+            vatAmount: 0,
+            totalAmount: depositAmount,
+            dueDate,
+            periodStart: contract.startDate,
+            periodEnd: contract.endDate,
+          },
+        });
+      }
 
       // Карта СКУД
       await tx.accessCard.create({
@@ -307,6 +351,34 @@ export class ContractsService {
         where: { contractId: id, status: { in: ['pending', 'overdue'] } },
         data: { status: 'cancelled' },
       });
+
+      // Возврат обеспечительного депозита — создаём кредит-ноту
+      const depositAmount = contract.depositAmount ? Number(contract.depositAmount) : 0;
+      if (depositAmount > 0) {
+        // Проверяем, был ли оплачен депозит
+        const depositInvoice = await tx.invoice.findFirst({
+          where: {
+            contractId: id,
+            invoiceNumber: { startsWith: 'DEP-' },
+            status: 'paid',
+          },
+        });
+        if (depositInvoice) {
+          const invCount = await tx.invoice.count({ where: { contractId: id } });
+          await tx.invoice.create({
+            data: {
+              tenantId: contract.tenantId,
+              contractId: id,
+              invoiceNumber: `DEP-RETURN-${contract.contractNumber}-${String(invCount + 1).padStart(3, '0')}`,
+              amount: -depositAmount,
+              vatAmount: 0,
+              totalAmount: -depositAmount,
+              dueDate: new Date(Date.now() + 10 * 86400000), // 10 рабочих дней
+              status: 'pending',
+            },
+          });
+        }
+      }
 
       return { message: 'Договор расторгнут' };
     });

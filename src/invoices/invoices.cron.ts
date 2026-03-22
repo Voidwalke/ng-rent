@@ -189,6 +189,112 @@ export class InvoicesCron {
       this.logger.log(`Истекло договоров: ${expired.length}`);
   }
 
+  /** Начисляет пени за просрочку: 0.1% в день, но не более 10% от суммы счёта */
+  @Cron('0 8 * * *')
+  async applyLateFees() {
+    const overdueInvoices = await this.prisma.invoice.findMany({
+      where: { status: 'overdue' },
+      include: { contract: { select: { contractNumber: true, tenantId: true } } },
+    });
+
+    let applied = 0;
+    for (const inv of overdueInvoices) {
+      const daysOverdue = Math.floor(
+        (Date.now() - new Date(inv.dueDate).getTime()) / 86400000,
+      );
+      if (daysOverdue <= 0) continue;
+
+      const baseAmount = Number(inv.totalAmount);
+      const penaltyRate = 0.001; // 0.1% в день
+      const maxPenaltyRate = 0.1; // max 10%
+      const penaltyAmount = Math.min(
+        baseAmount * penaltyRate * daysOverdue,
+        baseAmount * maxPenaltyRate,
+      );
+
+      // Проверяем, не создан ли уже счёт на пеню за этот период
+      const existingPenalty = await this.prisma.invoice.findFirst({
+        where: {
+          contractId: inv.contractId,
+          invoiceNumber: { startsWith: `PEN-${inv.invoiceNumber}` },
+        },
+      });
+
+      if (existingPenalty) {
+        // Обновляем сумму пени
+        await this.prisma.invoice.update({
+          where: { id: existingPenalty.id },
+          data: {
+            amount: penaltyAmount,
+            vatAmount: 0,
+            totalAmount: penaltyAmount,
+          },
+        });
+      } else {
+        // Создаём новый счёт на пеню
+        await this.prisma.invoice.create({
+          data: {
+            tenantId: inv.contract.tenantId,
+            contractId: inv.contractId,
+            invoiceNumber: `PEN-${inv.invoiceNumber}`,
+            amount: penaltyAmount,
+            vatAmount: 0,
+            totalAmount: penaltyAmount,
+            dueDate: new Date(),
+          },
+        });
+        applied++;
+      }
+    }
+
+    if (applied > 0) this.logger.log(`Начислено пеней: ${applied}`);
+  }
+
+  /** Уведомления об истекающих договорах (30, 60, 90 дней) */
+  @Cron('0 7 * * *')
+  async notifyExpiringContracts() {
+    const milestones = [90, 60, 30];
+    let sent = 0;
+
+    for (const days of milestones) {
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() + days);
+      const nextDay = new Date(targetDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      const expiring = await this.prisma.contract.findMany({
+        where: {
+          status: { in: ['signed', 'active'] },
+          endDate: { gte: targetDate, lt: nextDay },
+        },
+        include: {
+          client: { select: { contactEmail: true, companyName: true } },
+          unit: { select: { unitNumber: true, property: { select: { name: true } } } },
+        },
+      });
+
+      for (const contract of expiring) {
+        const email = contract.client?.contactEmail;
+        if (email) {
+          await this.mailer.send(
+            email,
+            `Договор ${contract.contractNumber} истекает через ${days} дней`,
+            'contract-ready',
+            {
+              contractNumber: contract.contractNumber,
+              endDate: contract.endDate.toLocaleDateString('ru-RU'),
+              unit: contract.unit?.unitNumber || '',
+              property: contract.unit?.property?.name || '',
+            },
+          );
+          sent++;
+        }
+      }
+    }
+
+    if (sent > 0) this.logger.log(`Отправлено уведомлений об истечении: ${sent}`);
+  }
+
   /** Удаляет записи аудита старше года */
   @Cron('0 2 * * *')
   async cleanupAuditLog() {
