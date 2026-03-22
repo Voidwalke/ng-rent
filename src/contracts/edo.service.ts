@@ -75,7 +75,6 @@ export class EdoService {
       data: {
         edoDocumentId: documentId,
         edoStatus: 'pending',
-        status: 'sent',
       },
     });
 
