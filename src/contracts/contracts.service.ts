@@ -186,6 +186,81 @@ export class ContractsService {
     });
   }
 
+  /** Договоры с истекающим сроком (за N дней) */
+  async findExpiring(tenantId: number, days = 30) {
+    const now = new Date();
+    const deadline = new Date();
+    deadline.setDate(now.getDate() + days);
+
+    return this.prisma.contract.findMany({
+      where: {
+        tenantId,
+        status: { in: ['signed', 'active'] },
+        endDate: { gte: now, lte: deadline },
+      },
+      include: {
+        client: { select: { companyName: true, contactName: true, contactEmail: true } },
+        unit: { select: { unitNumber: true, floor: true, areaSqm: true, property: { select: { name: true } } } },
+      },
+      orderBy: { endDate: 'asc' },
+    });
+  }
+
+  /** Продление договора — создаёт новый на основе старого */
+  async renew(id: number, tenantId: number, data: { newEndDate: string; newMonthlyRent?: number }) {
+    const contract = await this.findOne(id, tenantId);
+    if (!['signed', 'active'].includes(contract.status)) {
+      throw new BadRequestException('Продлить можно только активный/подписанный договор');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Завершаем текущий
+      await tx.contract.update({
+        where: { id },
+        data: { status: 'expired' },
+      });
+
+      // Новый номер
+      const now = new Date();
+      const prefix = `D-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const count = await tx.contract.count({
+        where: { contractNumber: { startsWith: prefix } },
+      });
+      const contractNumber = `${prefix}-${String(count + 1).padStart(4, '0')}`;
+
+      return tx.contract.create({
+        data: {
+          tenantId,
+          applicationId: contract.applicationId,
+          clientId: contract.clientId,
+          unitId: contract.unitId,
+          contractNumber,
+          startDate: contract.endDate,
+          endDate: new Date(data.newEndDate),
+          monthlyRent: data.newMonthlyRent || contract.monthlyRent,
+          status: 'signed',
+          signedAt: new Date(),
+        },
+      });
+    });
+  }
+
+  /** Продление срока действия текущего договора */
+  async extend(id: number, tenantId: number, newEndDate: string) {
+    const contract = await this.findOne(id, tenantId);
+    if (!['signed', 'active'].includes(contract.status)) {
+      throw new BadRequestException('Продлить можно только активный/подписанный договор');
+    }
+    if (new Date(newEndDate) <= contract.endDate) {
+      throw new BadRequestException('Новая дата должна быть позже текущей');
+    }
+
+    return this.prisma.contract.update({
+      where: { id },
+      data: { endDate: new Date(newEndDate) },
+    });
+  }
+
   async terminate(id: number, reason?: string, tenantId?: number) {
     const contract = await this.findOne(id, tenantId);
     if (!['active', 'signed'].includes(contract.status)) {

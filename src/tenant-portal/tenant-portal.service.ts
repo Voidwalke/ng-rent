@@ -193,6 +193,71 @@ export class TenantPortalService {
     });
   }
 
+  async getProfile(tenantId: number, userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, fullName: true, phone: true, role: true, createdAt: true },
+    });
+    if (!user) throw new NotFoundException('Пользователь не найден');
+
+    const client = await this.getClientByUser(tenantId, userId);
+    return {
+      user,
+      company: client
+        ? { id: client.id, companyName: client.companyName, inn: client.inn, contactPhone: client.contactPhone }
+        : null,
+    };
+  }
+
+  async updateProfile(tenantId: number, userId: number, dto: any) {
+    // Обновляем пользователя
+    const userData: any = {};
+    if (dto.fullName) userData.fullName = dto.fullName;
+    if (dto.phone) userData.phone = dto.phone;
+
+    if (Object.keys(userData).length) {
+      await this.prisma.user.update({ where: { id: userId }, data: userData });
+    }
+
+    // Обновляем данные компании (клиент)
+    const clientData: any = {};
+    if (dto.companyName) clientData.companyName = dto.companyName;
+    if (dto.inn) clientData.inn = dto.inn;
+    if (dto.legalAddress) clientData.legalAddress = dto.legalAddress;
+
+    if (Object.keys(clientData).length) {
+      const client = await this.getClientByUser(tenantId, userId);
+      if (client) {
+        await this.prisma.client.update({ where: { id: client.id }, data: clientData });
+      }
+    }
+
+    return this.getProfile(tenantId, userId);
+  }
+
+  async getMyMaintenance(tenantId: number, userId: number) {
+    return this.prisma.maintenanceRequest.findMany({
+      where: { tenantId, reportedBy: userId },
+      include: {
+        unit: { select: { unitNumber: true, property: { select: { name: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createMaintenance(tenantId: number, userId: number, dto: any) {
+    return this.prisma.maintenanceRequest.create({
+      data: {
+        tenantId,
+        unitId: dto.unitId,
+        reportedBy: userId,
+        title: dto.title,
+        description: dto.description,
+        priority: dto.priority || 'medium',
+      },
+    });
+  }
+
   private async getClientByUser(tenantId: number, userId: number) {
     return this.prisma.client.findFirst({
       where: { tenantId, userId },

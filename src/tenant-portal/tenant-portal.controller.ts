@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Param,
   Body,
   Query,
@@ -10,6 +11,8 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { TenantPortalService } from './tenant-portal.service';
 import { CreatePortalApplicationDto } from './dto/create-portal-application.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { CreateMaintenanceRequestDto } from './dto/create-maintenance-request.dto';
 import { CurrentUser } from '../common/decorators';
 
 @ApiTags('Личный кабинет арендатора')
@@ -82,5 +85,32 @@ export class TenantPortalController {
   @ApiOperation({ summary: 'Мои документы' })
   getMyDocuments(@CurrentUser() user: any) {
     return this.portalService.getMyDocuments(user.tenantId, user.id);
+  }
+
+  @Get('profile')
+  @ApiOperation({ summary: 'Мой профиль' })
+  getProfile(@CurrentUser() user: any) {
+    return this.portalService.getProfile(user.tenantId, user.id);
+  }
+
+  @Patch('profile')
+  @ApiOperation({ summary: 'Обновить профиль / данные компании' })
+  updateProfile(@CurrentUser() user: any, @Body() dto: UpdateProfileDto) {
+    return this.portalService.updateProfile(user.tenantId, user.id, dto);
+  }
+
+  @Get('maintenance')
+  @ApiOperation({ summary: 'Мои заявки на ремонт' })
+  getMyMaintenance(@CurrentUser() user: any) {
+    return this.portalService.getMyMaintenance(user.tenantId, user.id);
+  }
+
+  @Post('maintenance')
+  @ApiOperation({ summary: 'Создать заявку на ремонт' })
+  createMaintenance(
+    @CurrentUser() user: any,
+    @Body() dto: CreateMaintenanceRequestDto,
+  ) {
+    return this.portalService.createMaintenance(user.tenantId, user.id, dto);
   }
 }

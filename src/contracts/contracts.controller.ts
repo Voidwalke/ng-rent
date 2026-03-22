@@ -5,6 +5,7 @@ import {
   Patch,
   Param,
   Body,
+  Query,
   Res,
   ParseIntPipe,
 } from '@nestjs/common';
@@ -13,11 +14,14 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiProduces,
+  ApiQuery,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ContractsService } from './contracts.service';
 import { ContractGeneratorService } from './contract-generator.service';
 import { EdoService } from './edo.service';
+import { RenewContractDto } from './dto/renew-contract.dto';
+import { ExtendContractDto } from './dto/extend-contract.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
@@ -69,6 +73,39 @@ export class ContractsController {
     @CurrentUser('tenantId') tenantId: number,
   ) {
     return this.contractsService.sign(id, tenantId);
+  }
+
+  @Get('expiring')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Договоры с истекающим сроком' })
+  @ApiQuery({ name: 'days', required: false, example: 30 })
+  findExpiring(
+    @CurrentUser('tenantId') tenantId: number,
+    @Query('days') days?: string,
+  ) {
+    return this.contractsService.findExpiring(tenantId, days ? +days : 30);
+  }
+
+  @Post(':id/renew')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Продлить договор (создать новый)' })
+  renew(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+    @Body() dto: RenewContractDto,
+  ) {
+    return this.contractsService.renew(id, tenantId, dto);
+  }
+
+  @Patch(':id/extend')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Продлить срок текущего договора' })
+  extend(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+    @Body() dto: ExtendContractDto,
+  ) {
+    return this.contractsService.extend(id, tenantId, dto.newEndDate);
   }
 
   @Patch(':id/terminate')

@@ -16,6 +16,8 @@ import {
 } from '@nestjs/swagger';
 import { InvoicesService } from './invoices.service';
 import { PayInvoiceDto } from './dto/pay-invoice.dto';
+import { CreateInvoiceDto } from './dto/create-invoice.dto';
+import { CreditNoteDto } from './dto/credit-note.dto';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
 
@@ -69,6 +71,26 @@ export class InvoicesController {
       dto.paymentReference,
       tenantId,
     );
+  }
+
+  @Post()
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Создать счёт вручную' })
+  createManual(
+    @CurrentUser('tenantId') tenantId: number,
+    @Body() dto: CreateInvoiceDto,
+  ) {
+    return this.invoicesService.createManual(tenantId, dto);
+  }
+
+  @Post('credit-note')
+  @Roles(UserRole.admin)
+  @ApiOperation({ summary: 'Создать кредит-ноту (возврат)' })
+  creditNote(
+    @CurrentUser('tenantId') tenantId: number,
+    @Body() dto: CreditNoteDto,
+  ) {
+    return this.invoicesService.createCreditNote(tenantId, dto);
   }
 
   @Patch(':id/cancel')

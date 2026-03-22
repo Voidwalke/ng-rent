@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -10,7 +12,9 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
-import { CurrentUser } from '../common/decorators';
+import { UpdateClientDto } from './dto/update-client.dto';
+import { CurrentUser, Roles } from '../common/decorators';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Клиенты (арендаторы)')
 @ApiBearerAuth()
@@ -42,6 +46,15 @@ export class ClientsController {
     return this.clientsService.findOne(id, tenantId);
   }
 
+  @Get(':id/history')
+  @ApiOperation({ summary: 'История клиента (заявки, договоры, счета, платежи)' })
+  getHistory(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.clientsService.getHistory(id, tenantId);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Создать клиента' })
   create(
@@ -49,5 +62,25 @@ export class ClientsController {
     @Body() dto: CreateClientDto,
   ) {
     return this.clientsService.create(tenantId, dto);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Обновить клиента' })
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+    @Body() dto: UpdateClientDto,
+  ) {
+    return this.clientsService.update(id, tenantId, dto);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Удалить клиента (soft delete)' })
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.clientsService.softDelete(id, tenantId);
   }
 }

@@ -39,6 +39,10 @@ import { SubscriptionsCron } from './subscriptions/subscriptions.cron';
 import { SupportCron } from './support/support.cron';
 import { PlatformCron } from './platform-analytics/platform.cron';
 import { ActivityModule } from './activity/activity.module';
+import { MaintenanceModule } from './maintenance/maintenance.module';
+import { ContractTemplatesModule } from './contract-templates/contract-templates.module';
+import { RentIndexationModule } from './rent-indexation/rent-indexation.module';
+import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
 
 @Module({
   imports: [
@@ -92,6 +96,10 @@ import { ActivityModule } from './activity/activity.module';
     MetricsModule,
     ComplianceModule,
     ActivityModule,
+    MaintenanceModule,
+    ContractTemplatesModule,
+    RentIndexationModule,
+    NotificationPreferencesModule,
   ],
   providers: [
     SubscriptionsCron,

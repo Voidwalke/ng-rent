@@ -131,6 +131,142 @@ export class AnalyticsService {
     return result;
   }
 
+  /** Просроченная задолженность с разбивкой по срокам */
+  async getAgedDebt(tenantId: number) {
+    const now = new Date();
+    const invoices = await this.prisma.invoice.findMany({
+      where: { tenantId, status: 'overdue' },
+      include: { contract: { select: { contractNumber: true, client: { select: { companyName: true } } } } },
+    });
+
+    const buckets = { '0-30': [] as any[], '31-60': [] as any[], '61-90': [] as any[], '90+': [] as any[] };
+    for (const inv of invoices) {
+      const days = Math.floor((now.getTime() - new Date(inv.dueDate).getTime()) / 86400000);
+      const bucket = days <= 30 ? '0-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : '90+';
+      buckets[bucket].push({
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        amount: Number(inv.totalAmount),
+        daysOverdue: days,
+        client: inv.contract?.client?.companyName,
+        contract: inv.contract?.contractNumber,
+      });
+    }
+
+    return {
+      buckets,
+      totals: Object.fromEntries(
+        Object.entries(buckets).map(([k, v]) => [k, { count: v.length, amount: v.reduce((s, i) => s + i.amount, 0) }]),
+      ),
+    };
+  }
+
+  /** Заполняемость по объектам */
+  async getOccupancy(tenantId: number) {
+    const properties = await this.prisma.property.findMany({
+      where: { tenantId, deletedAt: null },
+      include: {
+        units: {
+          where: { deletedAt: null },
+          select: { id: true, status: true, areaSqm: true },
+        },
+      },
+    });
+
+    return properties.map((p) => {
+      const total = p.units.length;
+      const rented = p.units.filter((u) => u.status === 'rented').length;
+      const totalArea = p.units.reduce((s, u) => s + Number(u.areaSqm), 0);
+      const rentedArea = p.units.filter((u) => u.status === 'rented').reduce((s, u) => s + Number(u.areaSqm), 0);
+      return {
+        propertyId: p.id,
+        propertyName: p.name,
+        totalUnits: total,
+        rentedUnits: rented,
+        occupancyRate: total > 0 ? Math.round((rented / total) * 100) : 0,
+        totalArea,
+        rentedArea,
+        areaOccupancy: totalArea > 0 ? Math.round((rentedArea / totalArea) * 100) : 0,
+      };
+    });
+  }
+
+  /** Денежный поток по месяцам (начисления vs оплаты) */
+  async getCashflow(tenantId: number, months = 6) {
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - months + 1);
+    startDate.setDate(1);
+    startDate.setHours(0, 0, 0, 0);
+
+    const [invoices, payments] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where: { tenantId, createdAt: { gte: startDate } },
+        select: { totalAmount: true, createdAt: true, status: true },
+      }),
+      this.prisma.payment.findMany({
+        where: { tenantId, status: 'completed', createdAt: { gte: startDate } },
+        select: { amount: true, createdAt: true },
+      }),
+    ]);
+
+    const map = new Map<string, { billed: number; collected: number }>();
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      map.set(new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 7), { billed: 0, collected: 0 });
+    }
+
+    for (const inv of invoices) {
+      const key = inv.createdAt.toISOString().slice(0, 7);
+      if (map.has(key)) map.get(key)!.billed += Number(inv.totalAmount);
+    }
+    for (const pay of payments) {
+      const key = pay.createdAt.toISOString().slice(0, 7);
+      if (map.has(key)) map.get(key)!.collected += Number(pay.amount);
+    }
+
+    return Array.from(map.entries()).map(([month, data]) => ({ month, ...data }));
+  }
+
+  /** Стоимость простоя (упущенная выгода от пустующих помещений) */
+  async getVacancyCost(tenantId: number) {
+    const vacantUnits = await this.prisma.unit.findMany({
+      where: { tenantId, status: 'available', deletedAt: null },
+      include: { property: { select: { name: true } } },
+    });
+
+    const items = vacantUnits.map((u) => ({
+      unitId: u.id,
+      unitNumber: u.unitNumber,
+      floor: u.floor,
+      areaSqm: Number(u.areaSqm),
+      priceMonth: Number(u.priceMonth),
+      property: u.property.name,
+    }));
+
+    const totalMonthlyLoss = items.reduce((s, i) => s + i.priceMonth, 0);
+
+    return {
+      vacantUnits: items,
+      totalVacantUnits: items.length,
+      totalMonthlyLoss,
+      totalAnnualLoss: totalMonthlyLoss * 12,
+    };
+  }
+
+  /** Экспорт аналитики в JSON */
+  async exportAnalytics(tenantId: number) {
+    const [dashboard, revenue, occupancy, agedDebt, cashflow, vacancyCost] = await Promise.all([
+      this.getDashboard(tenantId),
+      this.getRevenue(tenantId, 12),
+      this.getOccupancy(tenantId),
+      this.getAgedDebt(tenantId),
+      this.getCashflow(tenantId, 12),
+      this.getVacancyCost(tenantId),
+    ]);
+    return { exportedAt: new Date().toISOString(), dashboard, revenue, occupancy, agedDebt, cashflow, vacancyCost };
+  }
+
   private async getMonthlyRevenue(tenantId: number): Promise<number> {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);

@@ -132,6 +132,62 @@ export class InvoicesService {
     });
   }
 
+  /** Создаёт ручной счёт */
+  async createManual(tenantId: number, data: any) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: data.contractId, tenantId },
+    });
+    if (!contract) throw new NotFoundException('Договор не найден');
+
+    const count = await this.prisma.invoice.count({
+      where: { contractId: data.contractId },
+    });
+
+    const vatRate = 0.2;
+    const vatAmount = data.amount * vatRate;
+    const totalAmount = data.amount + vatAmount;
+
+    return this.prisma.invoice.create({
+      data: {
+        tenantId,
+        contractId: data.contractId,
+        invoiceNumber: `INV-${contract.contractNumber}-${String(count + 1).padStart(3, '0')}`,
+        amount: data.amount,
+        vatAmount,
+        totalAmount,
+        dueDate: new Date(data.dueDate),
+        periodStart: data.periodStart ? new Date(data.periodStart) : null,
+        periodEnd: data.periodEnd ? new Date(data.periodEnd) : null,
+      },
+    });
+  }
+
+  /** Создаёт кредит-ноту (счёт с отрицательной суммой) */
+  async createCreditNote(tenantId: number, data: any) {
+    const original = await this.findOne(data.invoiceId, tenantId);
+    if (data.amount > Number(original.totalAmount)) {
+      throw new BadRequestException('Сумма возврата превышает сумму счёта');
+    }
+
+    const count = await this.prisma.invoice.count({
+      where: { contractId: original.contractId },
+    });
+
+    return this.prisma.invoice.create({
+      data: {
+        tenantId,
+        contractId: original.contractId,
+        invoiceNumber: `CN-${original.invoiceNumber}-${String(count + 1).padStart(3, '0')}`,
+        amount: -data.amount,
+        vatAmount: -(data.amount * 0.2),
+        totalAmount: -(data.amount * 1.2),
+        dueDate: new Date(),
+        status: 'paid',
+        paidAt: new Date(),
+      },
+    });
+  }
+
   /** Возвращает агрегированную сводку по счетам */
   async getSummary(tenantId: number) {
     const [pending, overdue, paidThisMonth] = await Promise.all([
