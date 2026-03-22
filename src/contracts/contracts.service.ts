@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -46,8 +47,9 @@ export class ContractsService {
     return contract;
   }
 
-  /** Проверяет, нет ли пересечения аренды на помещение */
+  /** Проверяет, нет ли пересечения аренды на помещение (принимает tx для атомарности) */
   private async checkUnitOverlap(
+    client: Pick<PrismaService, 'contract'>,
     unitId: number,
     startDate: Date,
     endDate: Date,
@@ -61,7 +63,7 @@ export class ContractsService {
     };
     if (excludeContractId) where.id = { not: excludeContractId };
 
-    const overlap = await this.prisma.contract.findFirst({ where });
+    const overlap = await client.contract.findFirst({ where });
     if (overlap) {
       throw new BadRequestException(
         `Помещение уже занято по договору ${overlap.contractNumber} (${overlap.startDate.toISOString().slice(0, 10)} — ${overlap.endDate.toISOString().slice(0, 10)})`,
@@ -82,10 +84,10 @@ export class ContractsService {
       );
     }
 
-    // Защита от двойной аренды
-    await this.checkUnitOverlap(app.unitId, app.desiredStart, app.desiredEnd);
-
     return this.prisma.$transaction(async (tx) => {
+      // Защита от двойной аренды (внутри транзакции для атомарности)
+      await this.checkUnitOverlap(tx, app.unitId, app.desiredStart, app.desiredEnd);
+
       // Номер в формате D-{год}{месяц}-{порядковый}
       const now = new Date();
       const prefix = `D-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -195,7 +197,7 @@ export class ContractsService {
           tenantId: contract.tenantId,
           clientId: contract.clientId,
           contractId: id,
-          cardNumber: `CARD-${Date.now().toString(36).toUpperCase()}`,
+          cardNumber: `CARD-${crypto.randomBytes(6).toString('hex').toUpperCase()}`,
           holderName: contract.client?.contactName,
           activatedAt: new Date(),
           expiresAt: contract.endDate,
@@ -258,6 +260,9 @@ export class ContractsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Проверяем overlap для нового периода (исключая текущий договор)
+      await this.checkUnitOverlap(tx, contract.unitId, contract.endDate, new Date(data.newEndDate), id);
+
       // Завершаем текущий
       await tx.contract.update({
         where: { id },
@@ -299,9 +304,14 @@ export class ContractsService {
       throw new BadRequestException('Новая дата должна быть позже текущей');
     }
 
-    return this.prisma.contract.update({
-      where: { id },
-      data: { endDate: new Date(newEndDate) },
+    return this.prisma.$transaction(async (tx) => {
+      // Проверяем, что продление не пересекается с другими договорами
+      await this.checkUnitOverlap(tx, contract.unitId, contract.endDate, new Date(newEndDate), id);
+
+      return tx.contract.update({
+        where: { id },
+        data: { endDate: new Date(newEndDate) },
+      });
     });
   }
 
@@ -374,7 +384,8 @@ export class ContractsService {
               vatAmount: 0,
               totalAmount: -depositAmount,
               dueDate: new Date(Date.now() + 10 * 86400000), // 10 рабочих дней
-              status: 'pending',
+              status: 'paid',
+              paidAt: new Date(),
             },
           });
         }

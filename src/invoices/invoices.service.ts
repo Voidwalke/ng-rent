@@ -4,6 +4,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateInvoiceDto } from './dto/create-invoice.dto';
+import { CreditNoteDto } from './dto/credit-note.dto';
 
 @Injectable()
 export class InvoicesService {
@@ -133,7 +135,7 @@ export class InvoicesService {
   }
 
   /** Создаёт ручной счёт */
-  async createManual(tenantId: number, data: any) {
+  async createManual(tenantId: number, data: CreateInvoiceDto) {
     const contract = await this.prisma.contract.findFirst({
       where: { id: data.contractId, tenantId },
     });
@@ -163,7 +165,7 @@ export class InvoicesService {
   }
 
   /** Создаёт кредит-ноту (счёт с отрицательной суммой) */
-  async createCreditNote(tenantId: number, data: any) {
+  async createCreditNote(tenantId: number, data: CreditNoteDto) {
     const original = await this.findOne(data.invoiceId, tenantId);
     if (data.amount > Number(original.totalAmount)) {
       throw new BadRequestException('Сумма возврата превышает сумму счёта');

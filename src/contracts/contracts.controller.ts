@@ -43,6 +43,17 @@ export class ContractsController {
     return this.contractsService.findAll(tenantId);
   }
 
+  @Get('expiring')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Договоры с истекающим сроком' })
+  @ApiQuery({ name: 'days', required: false, example: 30 })
+  findExpiring(
+    @CurrentUser('tenantId') tenantId: number,
+    @Query('days') days?: string,
+  ) {
+    return this.contractsService.findExpiring(tenantId, days ? +days : 30);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Детали договора' })
   findOne(
@@ -73,17 +84,6 @@ export class ContractsController {
     @CurrentUser('tenantId') tenantId: number,
   ) {
     return this.contractsService.sign(id, tenantId);
-  }
-
-  @Get('expiring')
-  @Roles(UserRole.admin, UserRole.manager)
-  @ApiOperation({ summary: 'Договоры с истекающим сроком' })
-  @ApiQuery({ name: 'days', required: false, example: 30 })
-  findExpiring(
-    @CurrentUser('tenantId') tenantId: number,
-    @Query('days') days?: string,
-  ) {
-    return this.contractsService.findExpiring(tenantId, days ? +days : 30);
   }
 
   @Post(':id/renew')

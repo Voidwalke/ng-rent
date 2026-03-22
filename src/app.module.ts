@@ -32,6 +32,7 @@ import { QueueModule } from './queue/queue.module';
 import { Integration1CModule } from './integration-1c/integration-1c.module';
 import { JwtAuthGuard, RolesGuard } from './common/guards';
 import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
+import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { MetricsModule } from './metrics/metrics.module';
 import { ComplianceModule } from './compliance/compliance.module';
@@ -109,6 +110,7 @@ import { NotificationPreferencesModule } from './notification-preferences/notifi
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor },
   ],
 })
 export class AppModule implements NestModule {
