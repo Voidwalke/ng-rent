@@ -3,7 +3,10 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 class PushKeysDto {
-  @ApiProperty({ example: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XFkApAJxjFZkT2' })
+  @ApiProperty({
+    example:
+      'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XFkApAJxjFZkT2',
+  })
   @IsString()
   p256dh: string;
 

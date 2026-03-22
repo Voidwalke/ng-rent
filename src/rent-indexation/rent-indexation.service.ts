@@ -8,7 +8,9 @@ export class RentIndexationService {
   /** Предварительный расчёт индексации для активных договоров */
   async preview(tenantId: number, rate: number) {
     if (rate <= -50 || rate > 100) {
-      throw new BadRequestException('Ставка индексации должна быть от -50% до +100%');
+      throw new BadRequestException(
+        'Ставка индексации должна быть от -50% до +100%',
+      );
     }
 
     const contracts = await this.prisma.contract.findMany({
@@ -27,15 +29,20 @@ export class RentIndexationService {
       client: c.client?.companyName,
       unit: c.unit?.unitNumber,
       currentRent: Number(c.monthlyRent),
-      newRent: Math.round(Number(c.monthlyRent) * multiplier),
-      difference: Math.round(Number(c.monthlyRent) * multiplier - Number(c.monthlyRent)),
+      newRent: Math.round(Number(c.monthlyRent) * multiplier * 100) / 100,
+      difference:
+        Math.round(
+          (Number(c.monthlyRent) * multiplier - Number(c.monthlyRent)) * 100,
+        ) / 100,
     }));
   }
 
-  /** Применить индексацию ко всем активным договорам */
+  /** Применяет индексацию ко всем активным договорам */
   async apply(tenantId: number, rate: number, contractIds?: number[]) {
     if (rate <= -50 || rate > 100) {
-      throw new BadRequestException('Ставка индексации должна быть от -50% до +100%');
+      throw new BadRequestException(
+        'Ставка индексации должна быть от -50% до +100%',
+      );
     }
 
     const where: any = { tenantId, status: { in: ['signed', 'active'] } };
@@ -44,16 +51,18 @@ export class RentIndexationService {
     const contracts = await this.prisma.contract.findMany({ where });
     const multiplier = 1 + rate / 100;
 
-    let updated = 0;
-    for (const c of contracts) {
-      const newRent = Math.round(Number(c.monthlyRent) * multiplier);
-      await this.prisma.contract.update({
-        where: { id: c.id },
-        data: { monthlyRent: newRent },
-      });
-      updated++;
-    }
+    const updated = await this.prisma.$transaction(
+      contracts.map((c) =>
+        this.prisma.contract.update({
+          where: { id: c.id },
+          data: {
+            monthlyRent:
+              Math.round(Number(c.monthlyRent) * multiplier * 100) / 100,
+          },
+        }),
+      ),
+    );
 
-    return { updated, rate: `${rate}%` };
+    return { updated: updated.length, rate: `${rate}%` };
   }
 }

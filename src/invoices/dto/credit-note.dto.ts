@@ -1,4 +1,4 @@
-import { IsInt, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreditNoteDto {
@@ -8,6 +8,7 @@ export class CreditNoteDto {
 
   @ApiProperty({ example: 15000, description: 'Сумма возврата' })
   @IsNumber()
+  @Min(0.01)
   amount: number;
 
   @ApiProperty({ example: 'Перерасчёт за период простоя', required: false })

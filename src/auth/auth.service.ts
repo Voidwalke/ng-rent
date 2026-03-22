@@ -469,7 +469,9 @@ export class AuthService {
       'FRONTEND_URL',
       'http://localhost:5173',
     );
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
     const inviteUrl = `${frontendUrl}/auth/accept-invite?token=${token}`;
     await this.mailer.send(dto.email, 'Приглашение в NG RENT', 'invite', {
       tenantName: tenant?.name || 'NG RENT',
@@ -612,7 +614,9 @@ export class AuthService {
     await this.redis.set(key, attempts, LOGIN_LOCKOUT_TTL);
     if (attempts >= MAX_LOGIN_ATTEMPTS) {
       await this.redis.set(`login-lock:${email}`, 1, LOGIN_LOCKOUT_TTL);
-      this.logger.warn(`Аккаунт ${email} заблокирован после ${attempts} неудачных попыток`);
+      this.logger.warn(
+        `Аккаунт ${email} заблокирован после ${attempts} неудачных попыток`,
+      );
     }
   }
 

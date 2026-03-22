@@ -98,7 +98,11 @@ export class SubscriptionsService {
 
     const now = new Date();
     // Безопасный расчёт +1 месяц (без overflow 31 янв → 3 марта)
-    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, Math.min(now.getDate(), 28));
+    const periodEnd = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      Math.min(now.getDate(), 28),
+    );
 
     return this.prisma.$transaction(async (tx) => {
       // Завершаем текущую подписку
@@ -158,7 +162,11 @@ export class SubscriptionsService {
       });
 
       const now = new Date();
-      const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, Math.min(now.getDate(), 28));
+      const periodEnd = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        Math.min(now.getDate(), 28),
+      );
       await tx.subscription.create({
         data: {
           tenantId,

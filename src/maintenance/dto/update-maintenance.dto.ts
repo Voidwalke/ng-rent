@@ -1,18 +1,36 @@
-import { IsString, IsOptional, IsNumber, IsDateString, IsInt } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsDateString,
+  IsInt,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateMaintenanceDto {
-  @ApiProperty({ example: 'in_progress', required: false, enum: ['open', 'in_progress', 'completed', 'cancelled'] })
+  @ApiProperty({
+    example: 'in_progress',
+    required: false,
+    enum: ['open', 'in_progress', 'completed', 'cancelled'],
+  })
   @IsOptional()
   @IsString()
   status?: string;
 
-  @ApiProperty({ example: 'medium', required: false, enum: ['low', 'medium', 'high'] })
+  @ApiProperty({
+    example: 'medium',
+    required: false,
+    enum: ['low', 'medium', 'high'],
+  })
   @IsOptional()
   @IsString()
   priority?: string;
 
-  @ApiProperty({ example: 5, required: false, description: 'ID ответственного сотрудника' })
+  @ApiProperty({
+    example: 5,
+    required: false,
+    description: 'ID ответственного сотрудника',
+  })
   @IsOptional()
   @IsInt()
   assignedTo?: number;

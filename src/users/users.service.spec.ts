@@ -64,10 +64,12 @@ describe('UsersService', () => {
       });
       mockPrisma.user.update.mockResolvedValueOnce({
         id: 1,
-        deletedAt: new Date(),
+        email: 'test@test.com',
+        fullName: 'Тест',
+        role: 'manager',
       });
       const result = await service.remove(1);
-      expect(result.deletedAt).toBeDefined();
+      expect(result.id).toBe(1);
     });
   });
 });

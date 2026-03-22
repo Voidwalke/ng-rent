@@ -10,7 +10,7 @@ import { TicketStatus } from '@prisma/client';
 export class SupportService {
   constructor(private prisma: PrismaService) {}
 
-  /** Создать тикет */
+  /** Создаёт тикет */
   async createTicket(
     tenantId: number,
     userId: number,
@@ -45,7 +45,7 @@ export class SupportService {
     });
   }
 
-  /** Список тикетов */
+  /** Возвращает список тикетов */
   async findAll(
     tenantId: number,
     filters?: { status?: TicketStatus; page?: number; limit?: number },
@@ -73,7 +73,7 @@ export class SupportService {
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
-  /** Тикет с сообщениями */
+  /** Возвращает тикет с сообщениями */
   async findOne(tenantId: number, id: number) {
     const ticket = await this.prisma.supportTicket.findFirst({
       where: { id, tenantId },
@@ -90,7 +90,7 @@ export class SupportService {
     return ticket;
   }
 
-  /** Добавить сообщение */
+  /** Добавляет сообщение */
   async addMessage(
     tenantId: number,
     ticketId: number,
@@ -123,7 +123,7 @@ export class SupportService {
     });
   }
 
-  /** Закрыть/решить тикет */
+  /** Решает тикет */
   async resolve(tenantId: number, id: number) {
     const ticket = await this.prisma.supportTicket.findFirst({
       where: { id, tenantId },
@@ -136,6 +136,7 @@ export class SupportService {
     });
   }
 
+  /** Закрывает тикет */
   async close(tenantId: number, id: number) {
     const ticket = await this.prisma.supportTicket.findFirst({
       where: { id, tenantId },

@@ -23,6 +23,7 @@ export class RedisService implements OnModuleDestroy {
     });
   }
 
+  /** Возвращает значение из кэша по ключу */
   async get<T>(key: string): Promise<T | null> {
     try {
       const val = await this.client.get(key);
@@ -32,6 +33,7 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /** Сохраняет значение в кэш с TTL */
   async set(key: string, value: any, ttlSeconds = 900): Promise<void> {
     try {
       await this.client.set(key, JSON.stringify(value), 'EX', ttlSeconds);
@@ -40,6 +42,7 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /** Удаляет ключ из кэша */
   async del(key: string): Promise<void> {
     try {
       await this.client.del(key);
@@ -48,7 +51,7 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
-  /** SETNX-based distributed lock. Returns true if acquired. */
+  /** Распределённая блокировка через SETNX. Возвращает true при успешном захвате */
   async acquireLock(key: string, ttlSeconds: number): Promise<boolean> {
     try {
       const result = await this.client.set(key, '1', 'EX', ttlSeconds, 'NX');
@@ -58,10 +61,12 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /** Освобождает распределённую блокировку */
   async releaseLock(key: string): Promise<void> {
     await this.del(key);
   }
 
+  /** Удаляет ключи из кэша по паттерну */
   async delByPattern(pattern: string): Promise<void> {
     try {
       let cursor = '0';

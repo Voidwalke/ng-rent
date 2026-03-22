@@ -1,4 +1,10 @@
-import { IsInt, IsString, IsOptional, IsNumber, IsDateString } from 'class-validator';
+import {
+  IsInt,
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsDateString,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreatePortalApplicationDto {
@@ -10,7 +16,10 @@ export class CreatePortalApplicationDto {
   @IsDateString()
   desiredStart: string;
 
-  @ApiProperty({ example: '2027-03-31', description: 'Желаемая дата окончания' })
+  @ApiProperty({
+    example: '2027-03-31',
+    description: 'Желаемая дата окончания',
+  })
   @IsDateString()
   desiredEnd: string;
 

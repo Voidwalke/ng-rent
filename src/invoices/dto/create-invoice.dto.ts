@@ -1,4 +1,11 @@
-import { IsInt, IsNumber, IsDateString, IsOptional, IsString } from 'class-validator';
+import {
+  IsInt,
+  IsNumber,
+  IsDateString,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateInvoiceDto {
@@ -8,6 +15,7 @@ export class CreateInvoiceDto {
 
   @ApiProperty({ example: 85000 })
   @IsNumber()
+  @Min(0.01)
   amount: number;
 
   @ApiProperty({ example: '2026-04-01' })

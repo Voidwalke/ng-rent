@@ -12,10 +12,7 @@ export class PushController {
 
   @Post('subscribe')
   @ApiOperation({ summary: 'Подписка на push-уведомления' })
-  async subscribe(
-    @CurrentUser() user: any,
-    @Body() dto: PushSubscribeDto,
-  ) {
+  async subscribe(@CurrentUser() user: any, @Body() dto: PushSubscribeDto) {
     await this.prisma.pushSubscription.deleteMany({
       where: { endpoint: dto.endpoint },
     });

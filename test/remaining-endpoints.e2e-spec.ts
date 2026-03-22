@@ -28,7 +28,9 @@ describe('Remaining Endpoints (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   }, 30_000);
 
@@ -124,9 +126,18 @@ describe('Remaining Endpoints (e2e)', () => {
         .expect(201);
       applicationId = res.body.id;
 
-      await api().patch(`/api/applications/${applicationId}/submit`).set(auth()).expect(200);
-      await api().patch(`/api/applications/${applicationId}/review`).set(auth()).expect(200);
-      await api().patch(`/api/applications/${applicationId}/approve`).set(auth()).expect(200);
+      await api()
+        .patch(`/api/applications/${applicationId}/submit`)
+        .set(auth())
+        .expect(200);
+      await api()
+        .patch(`/api/applications/${applicationId}/review`)
+        .set(auth())
+        .expect(200);
+      await api()
+        .patch(`/api/applications/${applicationId}/approve`)
+        .set(auth())
+        .expect(200);
     });
 
     it('generate + sign contract', async () => {
@@ -136,7 +147,10 @@ describe('Remaining Endpoints (e2e)', () => {
         .expect(201);
       contractId = res.body.id;
 
-      await api().patch(`/api/contracts/${contractId}/sign`).set(auth()).expect(200);
+      await api()
+        .patch(`/api/contracts/${contractId}/sign`)
+        .set(auth())
+        .expect(200);
     });
 
     it('create invoice', async () => {
@@ -180,17 +194,13 @@ describe('Remaining Endpoints (e2e)', () => {
     });
 
     it('POST /api/auth/2fa/send → 200/201 (отправить код)', async () => {
-      const res = await api()
-        .post('/api/auth/2fa/send')
-        .set(auth());
+      const res = await api().post('/api/auth/2fa/send').set(auth());
       // Может быть 200/201 или 400 если email не подтверждён
       expect([200, 201, 400]).toContain(res.status);
     });
 
     it('POST /api/auth/2fa/enable → 200/201', async () => {
-      const res = await api()
-        .post('/api/auth/2fa/enable')
-        .set(auth());
+      const res = await api().post('/api/auth/2fa/enable').set(auth());
       expect([200, 201]).toContain(res.status);
     });
 
@@ -212,7 +222,11 @@ describe('Remaining Endpoints (e2e)', () => {
     it('POST /api/auth/accept-invite → 400/404 (неверный токен)', async () => {
       const res = await api()
         .post('/api/auth/accept-invite')
-        .send({ token: 'fake-invite-token', password: 'Test123456!', fullName: 'Fake' });
+        .send({
+          token: 'fake-invite-token',
+          password: 'Test123456!',
+          fullName: 'Fake',
+        });
       expect([400, 404]).toContain(res.status);
     });
 
@@ -236,12 +250,18 @@ describe('Remaining Endpoints (e2e)', () => {
     });
 
     it('DELETE /api/auth/sessions/:id → 200/404', async () => {
-      const sessions = await api().get('/api/auth/sessions').set(auth()).expect(200);
+      const sessions = await api()
+        .get('/api/auth/sessions')
+        .set(auth())
+        .expect(200);
       if (sessions.body.length > 1) {
         // Удаляем не текущую сессию
         const other = sessions.body.find((s: any) => !s.current);
         if (other) {
-          await api().delete(`/api/auth/sessions/${other.id}`).set(auth()).expect(200);
+          await api()
+            .delete(`/api/auth/sessions/${other.id}`)
+            .set(auth())
+            .expect(200);
         }
       }
     });
@@ -261,7 +281,9 @@ describe('Remaining Endpoints (e2e)', () => {
         expect([200, 404, 500, 501]).toContain(res.status);
       } catch (err: any) {
         // Таймаут = PDF-генератор завис (puppeteer не установлен) — допустимо
-        expect(err.code || err.message).toMatch(/ECONNABORTED|timeout|ETIMEDOUT/i);
+        expect(err.code || err.message).toMatch(
+          /ECONNABORTED|timeout|ETIMEDOUT/i,
+        );
       }
     }, 15000);
 
@@ -274,7 +296,9 @@ describe('Remaining Endpoints (e2e)', () => {
         expect([200, 201, 400, 404, 500, 501]).toContain(res.status);
       } catch (err: any) {
         // Таймаут = внешний сервис ЭДО недоступен — допустимо
-        expect(err.code || err.message).toMatch(/ECONNABORTED|timeout|ETIMEDOUT/i);
+        expect(err.code || err.message).toMatch(
+          /ECONNABORTED|timeout|ETIMEDOUT/i,
+        );
       }
     }, 15000);
 
@@ -379,7 +403,11 @@ describe('Remaining Endpoints (e2e)', () => {
         .send({
           type: 'notification',
           event: 'payment.succeeded',
-          object: { id: 'fake-payment-id', status: 'succeeded', amount: { value: '100.00' } },
+          object: {
+            id: 'fake-payment-id',
+            status: 'succeeded',
+            amount: { value: '100.00' },
+          },
         });
       // Вебхук может вернуть 200/201 (принят) или 400 (не найден платёж)
       expect([200, 201, 400, 404]).toContain(res.status);
@@ -418,8 +446,14 @@ describe('Remaining Endpoints (e2e)', () => {
         })
         .expect(201);
       rejectAppId = res.body.id;
-      await api().patch(`/api/applications/${rejectAppId}/submit`).set(auth()).expect(200);
-      await api().patch(`/api/applications/${rejectAppId}/review`).set(auth()).expect(200);
+      await api()
+        .patch(`/api/applications/${rejectAppId}/submit`)
+        .set(auth())
+        .expect(200);
+      await api()
+        .patch(`/api/applications/${rejectAppId}/review`)
+        .set(auth())
+        .expect(200);
     });
 
     it('PATCH /api/applications/:id/reject → 200', async () => {
@@ -432,7 +466,10 @@ describe('Remaining Endpoints (e2e)', () => {
 
     it('cleanup: delete reject unit', async () => {
       if (rejectUnitId) {
-        await api().delete(`/api/units/${rejectUnitId}`).set(auth()).expect(200);
+        await api()
+          .delete(`/api/units/${rejectUnitId}`)
+          .set(auth())
+          .expect(200);
       }
     });
   });
@@ -459,7 +496,10 @@ describe('Remaining Endpoints (e2e)', () => {
         })
         .expect(201);
       tempPropertyId = res.body.id;
-      await api().patch(`/api/properties/${tempPropertyId}/publish`).set(auth()).expect(200);
+      await api()
+        .patch(`/api/properties/${tempPropertyId}/publish`)
+        .set(auth())
+        .expect(200);
     });
 
     it('PATCH /api/properties/:id/unpublish → 200', async () => {
@@ -512,10 +552,7 @@ describe('Remaining Endpoints (e2e)', () => {
 
     it('DELETE /api/documents/:id → 200', async () => {
       if (!docId) return;
-      await api()
-        .delete(`/api/documents/${docId}`)
-        .set(auth())
-        .expect(200);
+      await api().delete(`/api/documents/${docId}`).set(auth()).expect(200);
     });
   });
 
@@ -541,7 +578,8 @@ describe('Remaining Endpoints (e2e)', () => {
     });
 
     it('POST /api/import/clients → 201/400 (CSV upload)', async () => {
-      const csv = 'companyName,contactName,contactEmail\nTest Co,Test,test@x.com\n';
+      const csv =
+        'companyName,contactName,contactEmail\nTest Co,Test,test@x.com\n';
       const res = await api()
         .post('/api/import/clients')
         .set(auth())
@@ -577,9 +615,7 @@ describe('Remaining Endpoints (e2e)', () => {
     });
 
     it('POST /api/integration/1c/export → 200/201', async () => {
-      const res = await api()
-        .post('/api/integration/1c/export')
-        .set(auth());
+      const res = await api().post('/api/integration/1c/export').set(auth());
       expect([200, 201]).toContain(res.status);
     });
   });
@@ -590,18 +626,14 @@ describe('Remaining Endpoints (e2e)', () => {
 
   describe('Compliance (extended)', () => {
     it('POST /api/compliance/data-export → 200/201', async () => {
-      const res = await api()
-        .post('/api/compliance/data-export')
-        .set(auth());
+      const res = await api().post('/api/compliance/data-export').set(auth());
       expect([200, 201]).toContain(res.status);
     });
 
     // НЕ вызываем delete-account — это удалит тестовый аккаунт
     it('POST /api/compliance/delete-account → проверяем что эндпоинт существует (без вызова)', async () => {
       // Проверяем что 401 без токена (значит эндпоинт зарегистрирован)
-      await api()
-        .post('/api/compliance/delete-account')
-        .expect(401);
+      await api().post('/api/compliance/delete-account').expect(401);
     });
   });
 
@@ -660,7 +692,9 @@ describe('Remaining Endpoints (e2e)', () => {
     });
 
     it('GET /api/platform/analytics/tenants → 403', async () => {
-      const res = await api().get('/api/platform/analytics/tenants').set(auth());
+      const res = await api()
+        .get('/api/platform/analytics/tenants')
+        .set(auth());
       expect(res.status).toBe(403);
     });
 
@@ -731,10 +765,7 @@ describe('Remaining Endpoints (e2e)', () => {
           contactEmail: `del-${ts}@test.com`,
         })
         .expect(201);
-      await api()
-        .delete(`/api/clients/${res.body.id}`)
-        .set(auth())
-        .expect(200);
+      await api().delete(`/api/clients/${res.body.id}`).set(auth()).expect(200);
     });
   });
 
@@ -841,9 +872,7 @@ describe('Remaining Endpoints (e2e)', () => {
 
   describe('Auth cleanup', () => {
     it('DELETE /api/auth/sessions → 200 (отозвать все сессии)', async () => {
-      const res = await api()
-        .delete('/api/auth/sessions')
-        .set(auth());
+      const res = await api().delete('/api/auth/sessions').set(auth());
       expect([200, 204]).toContain(res.status);
     });
   });

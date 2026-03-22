@@ -10,12 +10,19 @@ export class CreateMaintenanceRequestDto {
   @IsString()
   title: string;
 
-  @ApiProperty({ example: 'Кондиционер не включается с понедельника', required: false })
+  @ApiProperty({
+    example: 'Кондиционер не включается с понедельника',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   description?: string;
 
-  @ApiProperty({ example: 'medium', enum: ['low', 'medium', 'high'], required: false })
+  @ApiProperty({
+    example: 'medium',
+    enum: ['low', 'medium', 'high'],
+    required: false,
+  })
   @IsOptional()
   @IsString()
   priority?: string;

@@ -7,27 +7,32 @@ import { UpdateTenantDto } from './dto/update-tenant.dto';
 export class TenantsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Возвращает список всех организаций */
   async findAll() {
     return this.prisma.tenant.findMany({
       orderBy: { createdAt: 'desc' },
     });
   }
 
+  /** Возвращает организацию по идентификатору */
   async findOne(id: number) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id } });
     if (!tenant) throw new NotFoundException('Организация не найдена');
     return tenant;
   }
 
+  /** Создаёт новую организацию */
   async create(dto: CreateTenantDto) {
     return this.prisma.tenant.create({ data: dto });
   }
 
+  /** Обновляет данные организации */
   async update(id: number, dto: UpdateTenantDto) {
     await this.findOne(id);
     return this.prisma.tenant.update({ where: { id }, data: dto });
   }
 
+  /** Деактивирует организацию (soft delete) */
   async remove(id: number) {
     await this.findOne(id);
     return this.prisma.tenant.update({

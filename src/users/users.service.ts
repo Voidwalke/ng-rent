@@ -8,6 +8,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Возвращает список пользователей тенанта */
   async findAll(tenantId: number) {
     return this.prisma.user.findMany({
       where: { tenantId, deletedAt: null },
@@ -22,6 +23,7 @@ export class UsersService {
     });
   }
 
+  /** Возвращает пользователя по идентификатору */
   async findOne(id: number, tenantId?: number) {
     const user = await this.prisma.user.findFirst({
       where: { id, ...(tenantId && { tenantId }), deletedAt: null },
@@ -41,6 +43,7 @@ export class UsersService {
     return user;
   }
 
+  /** Создаёт нового пользователя */
   async create(tenantId: number, dto: CreateUserDto) {
     const passwordHash = await bcrypt.hash(dto.password, 10);
     return this.prisma.user.create({
@@ -60,6 +63,7 @@ export class UsersService {
     });
   }
 
+  /** Обновляет данные пользователя */
   async update(id: number, dto: UpdateUserDto, tenantId?: number) {
     await this.findOne(id, tenantId);
     return this.prisma.user.update({
@@ -74,12 +78,13 @@ export class UsersService {
     });
   }
 
+  /** Мягкое удаление пользователя */
   async remove(id: number, tenantId?: number) {
     await this.findOne(id, tenantId);
-    // мягкое удаление
     return this.prisma.user.update({
       where: { id },
       data: { deletedAt: new Date() },
+      select: { id: true, email: true, fullName: true, role: true },
     });
   }
 }

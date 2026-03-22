@@ -11,7 +11,10 @@ export class CreateTemplateDto {
   @IsString()
   type?: string;
 
-  @ApiProperty({ example: '<h1>Договор аренды №{{number}}</h1><p>Арендодатель: {{landlord}}</p>' })
+  @ApiProperty({
+    example:
+      '<h1>Договор аренды №{{number}}</h1><p>Арендодатель: {{landlord}}</p>',
+  })
   @IsString()
   content: string;
 

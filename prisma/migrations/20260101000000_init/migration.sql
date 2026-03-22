@@ -104,6 +104,7 @@ CREATE TABLE "clients" (
     "bank_account" TEXT,
     "bik" VARCHAR(9),
     "user_id" INTEGER,
+    "deleted_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "clients_pkey" PRIMARY KEY ("id")
@@ -478,6 +479,81 @@ ALTER TABLE "support_tickets" ADD CONSTRAINT "support_tickets_user_id_fkey" FORE
 ALTER TABLE "support_messages" ADD CONSTRAINT "support_messages_ticket_id_fkey" FOREIGN KEY ("ticket_id") REFERENCES "support_tickets"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "support_messages" ADD CONSTRAINT "support_messages_sender_id_fkey" FOREIGN KEY ("sender_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
+-- CreateTable: maintenance_requests
+CREATE TABLE "maintenance_requests" (
+    "id" SERIAL NOT NULL,
+    "tenant_id" INTEGER NOT NULL,
+    "unit_id" INTEGER NOT NULL,
+    "reported_by" INTEGER NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "priority" TEXT NOT NULL DEFAULT 'medium',
+    "status" TEXT NOT NULL DEFAULT 'open',
+    "assigned_to" INTEGER,
+    "estimated_cost" DECIMAL(12,2),
+    "actual_cost" DECIMAL(12,2),
+    "scheduled_at" TIMESTAMP(3),
+    "completed_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "maintenance_requests_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable: contract_templates
+CREATE TABLE "contract_templates" (
+    "id" SERIAL NOT NULL,
+    "tenant_id" INTEGER NOT NULL,
+    "name" TEXT NOT NULL,
+    "type" TEXT NOT NULL DEFAULT 'standard',
+    "content" TEXT NOT NULL,
+    "is_default" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "contract_templates_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable: notification_preferences
+CREATE TABLE "notification_preferences" (
+    "id" SERIAL NOT NULL,
+    "user_id" INTEGER NOT NULL,
+    "settings" JSONB NOT NULL DEFAULT '{}',
+
+    CONSTRAINT "notification_preferences_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable: webhooks
+CREATE TABLE "webhooks" (
+    "id" SERIAL NOT NULL,
+    "tenant_id" INTEGER NOT NULL,
+    "url" TEXT NOT NULL,
+    "events" JSONB NOT NULL,
+    "secret" TEXT,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "webhooks_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex (new tables)
+CREATE INDEX "maintenance_requests_tenant_id_status_idx" ON "maintenance_requests"("tenant_id", "status");
+CREATE INDEX "maintenance_requests_unit_id_idx" ON "maintenance_requests"("unit_id");
+CREATE INDEX "contract_templates_tenant_id_idx" ON "contract_templates"("tenant_id");
+CREATE UNIQUE INDEX "notification_preferences_user_id_key" ON "notification_preferences"("user_id");
+CREATE INDEX "webhooks_tenant_id_idx" ON "webhooks"("tenant_id");
+
+-- CreateIndex (missing from original)
+CREATE INDEX "payments_external_id_idx" ON "payments"("external_id");
+CREATE INDEX "payments_invoice_id_idx" ON "payments"("invoice_id");
+CREATE INDEX "audit_log_created_at_idx" ON "audit_log"("created_at");
+
+-- AddForeignKey (new tables)
+ALTER TABLE "maintenance_requests" ADD CONSTRAINT "maintenance_requests_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "maintenance_requests" ADD CONSTRAINT "maintenance_requests_unit_id_fkey" FOREIGN KEY ("unit_id") REFERENCES "units"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "contract_templates" ADD CONSTRAINT "contract_templates_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "webhooks" ADD CONSTRAINT "webhooks_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
 -- Row Level Security
 ALTER TABLE "tenants" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "users" ENABLE ROW LEVEL SECURITY;
@@ -496,6 +572,9 @@ ALTER TABLE "subscriptions" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "subscription_invoices" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "import_jobs" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "support_tickets" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "maintenance_requests" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "contract_templates" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "webhooks" ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies (фильтрация по current_setting('app.current_tenant'))
 DO $$
@@ -506,7 +585,8 @@ BEGIN
     SELECT unnest(ARRAY[
       'users','properties','units','clients','applications','contracts',
       'invoices','payments','documents','notifications','access_cards',
-      'audit_log','subscriptions','subscription_invoices','import_jobs','support_tickets'
+      'audit_log','subscriptions','subscription_invoices','import_jobs','support_tickets',
+      'maintenance_requests','contract_templates','webhooks'
     ])
   LOOP
     EXECUTE format(

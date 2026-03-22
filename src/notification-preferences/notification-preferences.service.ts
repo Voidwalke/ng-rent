@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class NotificationPreferencesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Возвращает настройки уведомлений пользователя */
   async getPreferences(userId: number) {
     const pref = await this.prisma.notificationPreference.findUnique({
       where: { userId },
@@ -27,6 +28,7 @@ export class NotificationPreferencesService {
     return pref;
   }
 
+  /** Обновляет настройки уведомлений пользователя */
   async updatePreferences(userId: number, settings: any) {
     return this.prisma.notificationPreference.upsert({
       where: { userId },
@@ -35,8 +37,7 @@ export class NotificationPreferencesService {
     });
   }
 
-  // --- Webhooks ---
-
+  /** Возвращает список вебхуков тенанта */
   async getWebhooks(tenantId: number) {
     return this.prisma.webhook.findMany({
       where: { tenantId },
@@ -44,6 +45,7 @@ export class NotificationPreferencesService {
     });
   }
 
+  /** Создаёт вебхук для тенанта */
   async createWebhook(tenantId: number, dto: any) {
     const crypto = await import('crypto');
     return this.prisma.webhook.create({
@@ -57,6 +59,7 @@ export class NotificationPreferencesService {
     });
   }
 
+  /** Удаляет вебхук */
   async deleteWebhook(id: number, tenantId: number) {
     const wh = await this.prisma.webhook.findFirst({ where: { id, tenantId } });
     if (!wh) throw new NotFoundException('Webhook не найден');

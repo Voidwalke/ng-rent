@@ -38,8 +38,11 @@ export class AuditLogInterceptor implements NestInterceptor {
         try {
           const parts = url.split('/').filter(Boolean);
           // /api/v1/contracts/5/sign → entityType=contracts, entityId=5
-          const entityType = parts.find((_, i) => i >= 1 && !/^v\d+$/.test(parts[i])) || 'unknown';
-          const entityId = parseInt(parts.find((p) => /^\d+$/.test(p)) || '0') || 0;
+          const entityType =
+            parts.find((_, i) => i >= 1 && !/^v\d+$/.test(parts[i])) ||
+            'unknown';
+          const entityId =
+            parseInt(parts.find((p) => /^\d+$/.test(p)) || '0') || 0;
 
           const actionMap: Record<string, string> = {
             POST: 'create',

@@ -15,7 +15,8 @@ export class SubscriptionsCron {
   /** Списывает оплату по активным подпискам */
   @Cron('0 6 * * *')
   async chargeSubscriptions() {
-    if (!(await this.redis.acquireLock('cron:charge-subscriptions', 3600))) return;
+    if (!(await this.redis.acquireLock('cron:charge-subscriptions', 3600)))
+      return;
     try {
       const now = new Date();
 
@@ -36,24 +37,28 @@ export class SubscriptionsCron {
           const dueDate = new Date(newStart);
           dueDate.setDate(dueDate.getDate() + 14);
 
-          await this.prisma.subscription.update({
-            where: { id: sub.id },
-            data: { currentPeriodStart: newStart, currentPeriodEnd: newEnd },
-          });
+          await this.prisma.$transaction(async (tx) => {
+            await tx.subscription.update({
+              where: { id: sub.id },
+              data: { currentPeriodStart: newStart, currentPeriodEnd: newEnd },
+            });
 
-          await this.prisma.subscriptionInvoice.create({
-            data: {
-              tenantId: sub.tenantId,
-              subscriptionId: sub.id,
-              amount: sub.priceMonthly,
-              periodStart: newStart,
-              periodEnd: newEnd,
-              dueDate,
-              status: 'pending',
-            },
+            await tx.subscriptionInvoice.create({
+              data: {
+                tenantId: sub.tenantId,
+                subscriptionId: sub.id,
+                amount: sub.priceMonthly,
+                periodStart: newStart,
+                periodEnd: newEnd,
+                dueDate,
+                status: 'pending',
+              },
+            });
           });
         } catch (err) {
-          this.logger.error(`Ошибка продления подписки ${sub.id}: ${err.message}`);
+          this.logger.error(
+            `Ошибка продления подписки ${sub.id}: ${err.message}`,
+          );
         }
       }
 
@@ -80,11 +85,14 @@ export class SubscriptionsCron {
             data: { status: 'pending' },
           });
         } catch (err) {
-          this.logger.error(`Ошибка повтора платежа ${invoice.id}: ${err.message}`);
+          this.logger.error(
+            `Ошибка повтора платежа ${invoice.id}: ${err.message}`,
+          );
         }
       }
 
-      if (failed.length > 0) this.logger.log(`Повтор платежей: ${failed.length}`);
+      if (failed.length > 0)
+        this.logger.log(`Повтор платежей: ${failed.length}`);
     } finally {
       await this.redis.releaseLock('cron:retry-payments');
     }
@@ -106,14 +114,16 @@ export class SubscriptionsCron {
 
       for (const sub of expired) {
         try {
-          await this.prisma.subscription.update({
-            where: { id: sub.id },
-            data: { status: 'canceled' },
-          });
+          await this.prisma.$transaction(async (tx) => {
+            await tx.subscription.update({
+              where: { id: sub.id },
+              data: { status: 'canceled' },
+            });
 
-          await this.prisma.tenant.update({
-            where: { id: sub.tenantId },
-            data: { plan: 'free' },
+            await tx.tenant.update({
+              where: { id: sub.tenantId },
+              data: { plan: 'free' },
+            });
           });
         } catch (err) {
           this.logger.error(`Ошибка отмены подписки ${sub.id}: ${err.message}`);

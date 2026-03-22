@@ -12,6 +12,7 @@ import { validateTransition } from './state-machine';
 export class ApplicationsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Возвращает список заявок с фильтрацией и пагинацией */
   async findAll(
     tenantId: number,
     filters?: { status?: string; page?: number; limit?: number },
@@ -48,6 +49,7 @@ export class ApplicationsService {
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
+  /** Возвращает заявку по идентификатору */
   async findOne(id: number, tenantId?: number) {
     const app = await this.prisma.application.findFirst({
       where: { id, ...(tenantId && { tenantId }) },
@@ -61,6 +63,7 @@ export class ApplicationsService {
     return app;
   }
 
+  /** Создаёт заявку на аренду */
   async create(tenantId: number, dto: CreateApplicationDto) {
     return this.prisma.$transaction(async (tx) => {
       const unit = await tx.unit.findUnique({
@@ -84,7 +87,7 @@ export class ApplicationsService {
     });
   }
 
-  // Отправить заявку на рассмотрение
+  /** Отправляет заявку на рассмотрение */
   async submit(id: number, tenantId?: number) {
     const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'submitted');
@@ -94,7 +97,7 @@ export class ApplicationsService {
     });
   }
 
-  // Взять в работу
+  /** Берёт заявку в работу (статус «на рассмотрении») */
   async review(id: number, userId: number, tenantId?: number) {
     const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'under_review');
@@ -107,7 +110,7 @@ export class ApplicationsService {
     });
   }
 
-  // Одобрить — потом через очередь сгенерится договор
+  /** Одобряет заявку и резервирует помещение */
   async approve(id: number, userId: number, tenantId?: number) {
     const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'approved');
@@ -135,7 +138,7 @@ export class ApplicationsService {
     });
   }
 
-  // Отклонить
+  /** Отклоняет заявку */
   async reject(id: number, userId: number, tenantId?: number) {
     const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'rejected');
@@ -150,9 +153,9 @@ export class ApplicationsService {
     });
   }
 
-  // Перевести в статус "договор отправлен"
-  async markContractSent(id: number) {
-    const app = await this.findOne(id);
+  /** Переводит заявку в статус «договор отправлен» */
+  async markContractSent(id: number, tenantId?: number) {
+    const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'contract_sent');
     return this.prisma.application.update({
       where: { id },
@@ -160,7 +163,7 @@ export class ApplicationsService {
     });
   }
 
-  // Подписан — активируем аренду
+  /** Фиксирует подписание и переводит помещение в статус «арендовано» */
   async markSigned(id: number, tenantId?: number) {
     const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'signed');
@@ -178,8 +181,9 @@ export class ApplicationsService {
     });
   }
 
-  async activate(id: number) {
-    const app = await this.findOne(id);
+  /** Активирует заявку */
+  async activate(id: number, tenantId?: number) {
+    const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'active');
     return this.prisma.application.update({
       where: { id },

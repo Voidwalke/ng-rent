@@ -73,8 +73,10 @@ export class TenantPortalService {
 
   async getApplication(tenantId: number, userId: number, id: number) {
     const client = await this.getClientByUser(tenantId, userId);
+    if (!client)
+      throw new NotFoundException('Клиент не привязан к пользователю');
     const app = await this.prisma.application.findFirst({
-      where: { id, tenantId, clientId: client?.id },
+      where: { id, tenantId, clientId: client.id },
       include: {
         unit: {
           include: { property: { select: { name: true, address: true } } },
@@ -106,8 +108,10 @@ export class TenantPortalService {
 
   async getContract(tenantId: number, userId: number, id: number) {
     const client = await this.getClientByUser(tenantId, userId);
+    if (!client)
+      throw new NotFoundException('Клиент не привязан к пользователю');
     const contract = await this.prisma.contract.findFirst({
-      where: { id, tenantId, clientId: client?.id },
+      where: { id, tenantId, clientId: client.id },
       include: {
         unit: { include: { property: true } },
         invoices: { orderBy: { dueDate: 'desc' } },
@@ -143,8 +147,10 @@ export class TenantPortalService {
 
   async getInvoice(tenantId: number, userId: number, id: number) {
     const client = await this.getClientByUser(tenantId, userId);
+    if (!client)
+      throw new NotFoundException('Клиент не привязан к пользователю');
     const invoice = await this.prisma.invoice.findFirst({
-      where: { id, tenantId, contract: { clientId: client?.id } },
+      where: { id, tenantId, contract: { clientId: client.id } },
       include: { contract: { include: { unit: true } } },
     });
     if (!invoice) throw new NotFoundException('Счёт не найден');
@@ -154,8 +160,10 @@ export class TenantPortalService {
   async payInvoice(tenantId: number, userId: number, invoiceId: number) {
     // Проверяем что счёт принадлежит этому арендатору
     const client = await this.getClientByUser(tenantId, userId);
+    if (!client)
+      throw new NotFoundException('Клиент не привязан к пользователю');
     const invoice = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, tenantId, contract: { clientId: client?.id } },
+      where: { id: invoiceId, tenantId, contract: { clientId: client.id } },
     });
     if (!invoice) throw new NotFoundException('Счёт не найден');
 
@@ -196,7 +204,14 @@ export class TenantPortalService {
   async getProfile(tenantId: number, userId: number) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, fullName: true, phone: true, role: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        role: true,
+        createdAt: true,
+      },
     });
     if (!user) throw new NotFoundException('Пользователь не найден');
 
@@ -204,7 +219,12 @@ export class TenantPortalService {
     return {
       user,
       company: client
-        ? { id: client.id, companyName: client.companyName, inn: client.inn, contactPhone: client.contactPhone }
+        ? {
+            id: client.id,
+            companyName: client.companyName,
+            inn: client.inn,
+            contactPhone: client.contactPhone,
+          }
         : null,
     };
   }
@@ -228,7 +248,10 @@ export class TenantPortalService {
     if (Object.keys(clientData).length) {
       const client = await this.getClientByUser(tenantId, userId);
       if (client) {
-        await this.prisma.client.update({ where: { id: client.id }, data: clientData });
+        await this.prisma.client.update({
+          where: { id: client.id },
+          data: clientData,
+        });
       }
     }
 
@@ -239,7 +262,9 @@ export class TenantPortalService {
     return this.prisma.maintenanceRequest.findMany({
       where: { tenantId, reportedBy: userId },
       include: {
-        unit: { select: { unitNumber: true, property: { select: { name: true } } } },
+        unit: {
+          select: { unitNumber: true, property: { select: { name: true } } },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });

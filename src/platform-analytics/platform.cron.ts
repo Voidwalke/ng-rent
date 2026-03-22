@@ -29,7 +29,11 @@ export class PlatformCron {
         contracts,
         timestamp: new Date().toISOString(),
       };
-      await this.redis.set('platform:live_metrics', JSON.stringify(metrics), 600);
+      await this.redis.set(
+        'platform:live_metrics',
+        JSON.stringify(metrics),
+        600,
+      );
       this.logger.debug(
         `Метрики обновлены: ${tenants} тенантов, ${users} пользователей`,
       );
@@ -60,11 +64,15 @@ export class PlatformCron {
 
       for (const user of toDelete) {
         try {
-          await this.prisma.notification.deleteMany({ where: { userId: user.id } });
+          await this.prisma.notification.deleteMany({
+            where: { userId: user.id },
+          });
           await this.prisma.auditLog.deleteMany({ where: { userId: user.id } });
           await this.prisma.user.delete({ where: { id: user.id } });
         } catch (err) {
-          this.logger.error(`Ошибка удаления аккаунта ${user.id}: ${err.message}`);
+          this.logger.error(
+            `Ошибка удаления аккаунта ${user.id}: ${err.message}`,
+          );
         }
       }
 

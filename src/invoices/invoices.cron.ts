@@ -42,11 +42,20 @@ export class InvoicesCron {
           });
           if (existingInvoice) continue;
 
-          const periodStart = new Date(today.getFullYear(), today.getMonth(), 1);
-          const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+          const periodStart = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            1,
+          );
+          const periodEnd = new Date(
+            today.getFullYear(),
+            today.getMonth() + 1,
+            0,
+          );
           const amount = contract.monthlyRent;
           const vatAmount = Math.round(Number(amount) * 0.2 * 100) / 100;
-          const totalAmount = Math.round((Number(amount) + vatAmount) * 100) / 100;
+          const totalAmount =
+            Math.round((Number(amount) + vatAmount) * 100) / 100;
           const dueDate = new Date();
           dueDate.setDate(dueDate.getDate() + 14);
 
@@ -71,7 +80,9 @@ export class InvoicesCron {
           });
           generated++;
         } catch (err) {
-          this.logger.error(`Ошибка генерации счёта для договора ${contract.id}: ${err.message}`);
+          this.logger.error(
+            `Ошибка генерации счёта для договора ${contract.id}: ${err.message}`,
+          );
         }
       }
 
@@ -113,7 +124,9 @@ export class InvoicesCron {
             },
           });
         } catch (err) {
-          this.logger.error(`Ошибка блокировки СКУД для ${inv.invoiceNumber}: ${err.message}`);
+          this.logger.error(
+            `Ошибка блокировки СКУД для ${inv.invoiceNumber}: ${err.message}`,
+          );
         }
       }
       if (critical.length > 0)
@@ -163,7 +176,9 @@ export class InvoicesCron {
             `Напоминание: счёт ${invoice.invoiceNumber} — оплата до ${invoice.dueDate.toLocaleDateString('ru-RU')}`,
           );
         } catch (err) {
-          this.logger.error(`Ошибка отправки напоминания ${invoice.invoiceNumber}: ${err.message}`);
+          this.logger.error(
+            `Ошибка отправки напоминания ${invoice.invoiceNumber}: ${err.message}`,
+          );
         }
       }
 
@@ -219,7 +234,9 @@ export class InvoicesCron {
             });
           });
         } catch (err) {
-          this.logger.error(`Ошибка завершения договора ${contract.id}: ${err.message}`);
+          this.logger.error(
+            `Ошибка завершения договора ${contract.id}: ${err.message}`,
+          );
         }
       }
       if (expired.length > 0)
@@ -236,7 +253,9 @@ export class InvoicesCron {
     try {
       const overdueInvoices = await this.prisma.invoice.findMany({
         where: { status: 'overdue' },
-        include: { contract: { select: { contractNumber: true, tenantId: true } } },
+        include: {
+          contract: { select: { contractNumber: true, tenantId: true } },
+        },
       });
 
       let applied = 0;
@@ -286,7 +305,9 @@ export class InvoicesCron {
             applied++;
           }
         } catch (err) {
-          this.logger.error(`Ошибка начисления пени для ${inv.invoiceNumber}: ${err.message}`);
+          this.logger.error(
+            `Ошибка начисления пени для ${inv.invoiceNumber}: ${err.message}`,
+          );
         }
       }
 
@@ -299,7 +320,8 @@ export class InvoicesCron {
   /** Уведомления об истекающих договорах (30, 60, 90 дней) */
   @Cron('0 7 * * *')
   async notifyExpiringContracts() {
-    if (!(await this.redis.acquireLock('cron:expiring-notifications', 3600))) return;
+    if (!(await this.redis.acquireLock('cron:expiring-notifications', 3600)))
+      return;
     try {
       const milestones = [90, 60, 30];
       let sent = 0;
@@ -317,7 +339,12 @@ export class InvoicesCron {
           },
           include: {
             client: { select: { contactEmail: true, companyName: true } },
-            unit: { select: { unitNumber: true, property: { select: { name: true } } } },
+            unit: {
+              select: {
+                unitNumber: true,
+                property: { select: { name: true } },
+              },
+            },
           },
         });
 
@@ -339,12 +366,15 @@ export class InvoicesCron {
               sent++;
             }
           } catch (err) {
-            this.logger.error(`Ошибка уведомления по договору ${contract.contractNumber}: ${err.message}`);
+            this.logger.error(
+              `Ошибка уведомления по договору ${contract.contractNumber}: ${err.message}`,
+            );
           }
         }
       }
 
-      if (sent > 0) this.logger.log(`Отправлено уведомлений об истечении: ${sent}`);
+      if (sent > 0)
+        this.logger.log(`Отправлено уведомлений об истечении: ${sent}`);
     } finally {
       await this.redis.releaseLock('cron:expiring-notifications');
     }

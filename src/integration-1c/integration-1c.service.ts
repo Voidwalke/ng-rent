@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import {
   Integration1CProvider,
   ExportPayload1C,
@@ -13,91 +14,110 @@ export class Integration1CService {
   constructor(
     private prisma: PrismaService,
     private provider: Integration1CProvider,
+    private redis: RedisService,
   ) {}
 
   /** Экспортирует новые счета в 1С */
   @Cron('0 */30 * * * *')
   async exportNewInvoices() {
-    const invoices = await this.prisma.invoice.findMany({
-      where: { paymentReference: null, status: 'pending' },
-      include: {
-        contract: {
-          include: { client: true, unit: { include: { property: true } } },
+    if (!(await this.redis.acquireLock('cron:1c:invoices', 1800))) return;
+    try {
+      const invoices = await this.prisma.invoice.findMany({
+        where: { paymentReference: null, status: 'pending' },
+        include: {
+          contract: {
+            include: { client: true, unit: { include: { property: true } } },
+          },
+          tenant: true,
         },
-        tenant: true,
-      },
-      take: 50,
-    });
+        take: 50,
+      });
 
-    for (const invoice of invoices) {
-      const payload: ExportPayload1C = {
-        type: 'invoice',
-        tenantId: invoice.tenantId,
-        entityId: invoice.id,
-        data: {
-          invoiceNumber: invoice.invoiceNumber,
-          amount: Number(invoice.amount),
-          vatAmount: Number(invoice.vatAmount),
-          totalAmount: Number(invoice.totalAmount),
-          dueDate: invoice.dueDate,
-          clientInn: invoice.contract.client.inn,
-          clientName: invoice.contract.client.companyName,
-          propertyAddress: invoice.contract.unit.property.address,
-          unitNumber: invoice.contract.unit.unitNumber,
-        },
-      };
+      for (const invoice of invoices) {
+        try {
+          const payload: ExportPayload1C = {
+            type: 'invoice',
+            tenantId: invoice.tenantId,
+            entityId: invoice.id,
+            data: {
+              invoiceNumber: invoice.invoiceNumber,
+              amount: Number(invoice.amount),
+              vatAmount: Number(invoice.vatAmount),
+              totalAmount: Number(invoice.totalAmount),
+              dueDate: invoice.dueDate,
+              clientInn: invoice.contract.client.inn,
+              clientName: invoice.contract.client.companyName,
+              propertyAddress: invoice.contract.unit.property.address,
+              unitNumber: invoice.contract.unit.unitNumber,
+            },
+          };
 
-      const result = await this.provider.exportEntity(payload);
-      if (result.success && result.externalId) {
-        await this.prisma.invoice.update({
-          where: { id: invoice.id },
-          data: { paymentReference: `1c:${result.externalId}` },
-        });
+          const result = await this.provider.exportEntity(payload);
+          if (result.success && result.externalId) {
+            await this.prisma.invoice.update({
+              where: { id: invoice.id },
+              data: { paymentReference: `1c:${result.externalId}` },
+            });
+          }
+        } catch (err: any) {
+          this.logger.error(`Экспорт счёта ${invoice.id}: ${err.message}`);
+        }
       }
-    }
 
-    if (invoices.length > 0) {
-      this.logger.log(`Экспорт в 1С: ${invoices.length} счетов`);
+      if (invoices.length > 0) {
+        this.logger.log(`Экспорт в 1С: ${invoices.length} счетов`);
+      }
+    } finally {
+      await this.redis.releaseLock('cron:1c:invoices');
     }
   }
 
   /** Экспортирует подписанные договоры в 1С */
   @Cron('0 5 * * *')
   async exportSignedContracts() {
-    const contracts = await this.prisma.contract.findMany({
-      where: {
-        status: 'signed',
-        edoStatus: null,
-      },
-      include: {
-        client: true,
-        unit: { include: { property: true } },
-        tenant: true,
-      },
-      take: 20,
-    });
-
-    for (const contract of contracts) {
-      const payload: ExportPayload1C = {
-        type: 'contract',
-        tenantId: contract.tenantId,
-        entityId: contract.id,
-        data: {
-          contractNumber: contract.contractNumber,
-          startDate: contract.startDate,
-          endDate: contract.endDate,
-          monthlyRent: Number(contract.monthlyRent),
-          depositAmount: Number(contract.depositAmount),
-          clientInn: contract.client.inn,
-          clientName: contract.client.companyName,
+    if (!(await this.redis.acquireLock('cron:1c:contracts', 600))) return;
+    try {
+      const contracts = await this.prisma.contract.findMany({
+        where: {
+          status: 'signed',
+          edoStatus: null,
         },
-      };
+        include: {
+          client: true,
+          unit: { include: { property: true } },
+          tenant: true,
+        },
+        take: 20,
+      });
 
-      await this.provider.exportEntity(payload);
-    }
+      for (const contract of contracts) {
+        try {
+          const payload: ExportPayload1C = {
+            type: 'contract',
+            tenantId: contract.tenantId,
+            entityId: contract.id,
+            data: {
+              contractNumber: contract.contractNumber,
+              startDate: contract.startDate,
+              endDate: contract.endDate,
+              monthlyRent: Number(contract.monthlyRent),
+              depositAmount: Number(contract.depositAmount),
+              clientInn: contract.client.inn,
+              clientName: contract.client.companyName,
+            },
+          };
 
-    if (contracts.length > 0) {
-      this.logger.log(`Экспорт в 1С: ${contracts.length} договоров`);
+          await this.provider.exportEntity(payload);
+        } catch (err: any) {
+          this.logger.error(`Экспорт договора ${contract.id}: ${err.message}`);
+        }
+      }
+
+      if (contracts.length > 0) {
+        this.logger.log(`Экспорт в 1С: ${contracts.length} договоров`);
+      }
+    } finally {
+      await this.redis.releaseLock('cron:1c:contracts');
     }
   }
 

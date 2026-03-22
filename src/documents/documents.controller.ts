@@ -56,7 +56,13 @@ export class DocumentsController {
     if (!file) {
       throw new BadRequestException('Файл обязателен');
     }
-    const allowedEntityTypes = ['contract', 'property', 'unit', 'client', 'application'];
+    const allowedEntityTypes = [
+      'contract',
+      'property',
+      'unit',
+      'client',
+      'application',
+    ];
     if (!entityType || !allowedEntityTypes.includes(entityType)) {
       throw new BadRequestException(
         `entityType должен быть одним из: ${allowedEntityTypes.join(', ')}`,

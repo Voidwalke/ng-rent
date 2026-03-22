@@ -45,7 +45,10 @@ export class PaymentsController {
   @Post('webhook/yookassa')
   @Public()
   @ApiOperation({ summary: 'Вебхук ЮKassa' })
-  handleWebhook(@Body() body: YookassaWebhookDto, @Headers('x-signature') signature: string) {
+  handleWebhook(
+    @Body() body: YookassaWebhookDto,
+    @Headers('x-signature') signature: string,
+  ) {
     return this.paymentsService.handleWebhook(body, signature);
   }
 

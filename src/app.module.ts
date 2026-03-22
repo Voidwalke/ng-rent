@@ -36,8 +36,6 @@ import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { MetricsModule } from './metrics/metrics.module';
 import { ComplianceModule } from './compliance/compliance.module';
-import { SubscriptionsCron } from './subscriptions/subscriptions.cron';
-import { SupportCron } from './support/support.cron';
 import { PlatformCron } from './platform-analytics/platform.cron';
 import { ActivityModule } from './activity/activity.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
@@ -103,8 +101,6 @@ import { NotificationPreferencesModule } from './notification-preferences/notifi
     NotificationPreferencesModule,
   ],
   providers: [
-    SubscriptionsCron,
-    SupportCron,
     PlatformCron,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

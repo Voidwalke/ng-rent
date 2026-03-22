@@ -35,7 +35,9 @@ describe('All Endpoints (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   }, 30_000);
 
@@ -245,7 +247,10 @@ describe('All Endpoints (e2e)', () => {
       api().get(`/api/properties/${propertyId}/stats`).set(auth()).expect(200));
 
     it('PATCH /api/properties/:id/publish → 200', () =>
-      api().patch(`/api/properties/${propertyId}/publish`).set(auth()).expect(200));
+      api()
+        .patch(`/api/properties/${propertyId}/publish`)
+        .set(auth())
+        .expect(200));
   });
 
   // ═══════════════════════════════════════════════════════
@@ -349,7 +354,10 @@ describe('All Endpoints (e2e)', () => {
       api().get('/api/contract-templates').set(auth()).expect(200));
 
     it('GET /api/contract-templates/:id → 200', () =>
-      api().get(`/api/contract-templates/${templateId}`).set(auth()).expect(200));
+      api()
+        .get(`/api/contract-templates/${templateId}`)
+        .set(auth())
+        .expect(200));
 
     it('PATCH /api/contract-templates/:id → 200', () =>
       api()
@@ -664,7 +672,10 @@ describe('All Endpoints (e2e)', () => {
         .expect(200));
 
     it('GET /api/notification-preferences/webhooks → 200', () =>
-      api().get('/api/notification-preferences/webhooks').set(auth()).expect(200));
+      api()
+        .get('/api/notification-preferences/webhooks')
+        .set(auth())
+        .expect(200));
   });
 
   // ═══════════════════════════════════════════════════════
@@ -823,10 +834,16 @@ describe('All Endpoints (e2e)', () => {
 
   describe('Cleanup (DELETE)', () => {
     it('DELETE /api/maintenance/:id → 200', () =>
-      api().delete(`/api/maintenance/${maintenanceId}`).set(auth()).expect(200));
+      api()
+        .delete(`/api/maintenance/${maintenanceId}`)
+        .set(auth())
+        .expect(200));
 
     it('DELETE /api/contract-templates/:id → 200', () =>
-      api().delete(`/api/contract-templates/${templateId}`).set(auth()).expect(200));
+      api()
+        .delete(`/api/contract-templates/${templateId}`)
+        .set(auth())
+        .expect(200));
 
     it('DELETE /api/units/:id → 400 (есть активные договоры)', () =>
       api().delete(`/api/units/${unitId}`).set(auth()).expect(400));
@@ -847,11 +864,7 @@ describe('All Endpoints (e2e)', () => {
       api().get('/api/contracts/999999').set(auth()).expect(404));
 
     it('POST /api/applications → 400 (без обязательных полей)', () =>
-      api()
-        .post('/api/applications')
-        .set(auth())
-        .send({})
-        .expect(400));
+      api().post('/api/applications').set(auth()).send({}).expect(400));
 
     it('POST /api/auth/register → 400 (без acceptTerms)', () =>
       api()

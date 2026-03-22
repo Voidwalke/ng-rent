@@ -33,7 +33,8 @@ export class SupportCron {
         );
       }
 
-      if (stale.length > 0) this.logger.warn(`Зависших тикетов: ${stale.length}`);
+      if (stale.length > 0)
+        this.logger.warn(`Зависших тикетов: ${stale.length}`);
     } finally {
       await this.redis.releaseLock('cron:stale-tickets');
     }

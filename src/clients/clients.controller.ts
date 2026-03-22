@@ -47,7 +47,9 @@ export class ClientsController {
   }
 
   @Get(':id/history')
-  @ApiOperation({ summary: 'История клиента (заявки, договоры, счета, платежи)' })
+  @ApiOperation({
+    summary: 'История клиента (заявки, договоры, счета, платежи)',
+  })
   getHistory(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('tenantId') tenantId: number,

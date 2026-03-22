@@ -1,15 +1,15 @@
 /** Интерфейс ЭДО-провайдера (Strategy pattern) */
 export interface IEdoProvider {
-  /** Отправить документ на подпись */
+  /** Отправляет документ на подпись */
   sendForSigning(
     pdfBuffer: Buffer,
     signers: { name: string; inn: string }[],
   ): Promise<{ documentId: string }>;
-  /** Проверить статус подписания */
+  /** Проверяет статус подписания */
   checkStatus(
     documentId: string,
   ): Promise<{ status: 'pending' | 'signed' | 'rejected' | 'expired' }>;
-  /** Скачать подписанный документ */
+  /** Скачивает подписанный документ */
   downloadSigned(documentId: string): Promise<Buffer>;
 }
 

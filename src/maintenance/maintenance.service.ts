@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Допустимые переходы статусов заявки на ремонт */
@@ -14,7 +18,15 @@ export class MaintenanceService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Возвращает список заявок на ремонт с фильтрацией */
-  async findAll(tenantId: number, filters?: { status?: string; propertyId?: number; page?: number; limit?: number }) {
+  async findAll(
+    tenantId: number,
+    filters?: {
+      status?: string;
+      propertyId?: number;
+      page?: number;
+      limit?: number;
+    },
+  ) {
     const where: any = { tenantId };
     if (filters?.status) where.status = filters.status;
     if (filters?.propertyId) where.unit = { propertyId: filters.propertyId };
@@ -26,7 +38,13 @@ export class MaintenanceService {
       this.prisma.maintenanceRequest.findMany({
         where,
         include: {
-          unit: { select: { unitNumber: true, floor: true, property: { select: { name: true } } } },
+          unit: {
+            select: {
+              unitNumber: true,
+              floor: true,
+              property: { select: { name: true } },
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -43,7 +61,9 @@ export class MaintenanceService {
     const req = await this.prisma.maintenanceRequest.findFirst({
       where: { id, tenantId },
       include: {
-        unit: { include: { property: { select: { name: true, address: true } } } },
+        unit: {
+          include: { property: { select: { name: true, address: true } } },
+        },
       },
     });
     if (!req) throw new NotFoundException('Заявка на ремонт не найдена');

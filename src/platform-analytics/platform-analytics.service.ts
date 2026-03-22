@@ -9,7 +9,7 @@ export class PlatformAnalyticsService {
     private redis: RedisService,
   ) {}
 
-  /** MRR — ежемесячная выручка платформы */
+  /** Возвращает MRR — ежемесячную выручку платформы */
   async getMrr() {
     const cached = await this.redis.get<any>('platform:mrr');
     if (cached) return cached;
@@ -40,7 +40,7 @@ export class PlatformAnalyticsService {
     return result;
   }
 
-  /** Статистика по тенантам */
+  /** Возвращает статистику по тенантам */
   async getTenantStats() {
     const cached = await this.redis.get<any>('platform:tenants');
     if (cached) return cached;
@@ -72,7 +72,7 @@ export class PlatformAnalyticsService {
     return result;
   }
 
-  /** Воронка: зарег → онбординг → оплата */
+  /** Возвращает воронку: регистрация → онбординг → оплата */
   async getFunnel() {
     const [registered, completedOnboarding, paid] = await Promise.all([
       this.prisma.tenant.count(),
@@ -91,7 +91,7 @@ export class PlatformAnalyticsService {
     };
   }
 
-  /** Churn — отток за месяц */
+  /** Возвращает отток (Churn) за месяц */
   async getChurn() {
     const monthAgo = new Date();
     monthAgo.setMonth(monthAgo.getMonth() - 1);

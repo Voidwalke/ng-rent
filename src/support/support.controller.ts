@@ -23,10 +23,7 @@ export class SupportController {
 
   @Post('tickets')
   @ApiOperation({ summary: 'Создать тикет' })
-  create(
-    @CurrentUser() user: any,
-    @Body() dto: CreateTicketDto,
-  ) {
+  create(@CurrentUser() user: any, @Body() dto: CreateTicketDto) {
     return this.supportService.createTicket(user.tenantId, user.id, dto);
   }
 
@@ -58,7 +55,12 @@ export class SupportController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AddMessageDto,
   ) {
-    return this.supportService.addMessage(user.tenantId, id, user.id, dto.message);
+    return this.supportService.addMessage(
+      user.tenantId,
+      id,
+      user.id,
+      dto.message,
+    );
   }
 
   @Patch('tickets/:id/resolve')

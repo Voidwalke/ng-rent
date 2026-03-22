@@ -112,7 +112,10 @@ describe('SubscriptionsService', () => {
       });
       mockPrisma.subscription.update.mockResolvedValueOnce({});
       mockPrisma.tenant.update.mockResolvedValueOnce({});
-      mockPrisma.subscription.create.mockResolvedValueOnce({ id: 2, plan: 'free' });
+      mockPrisma.subscription.create.mockResolvedValueOnce({
+        id: 2,
+        plan: 'free',
+      });
 
       const result = await service.cancel(1);
       expect(result.message).toContain('отменена');

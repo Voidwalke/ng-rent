@@ -162,7 +162,7 @@ export class EdoService {
     return this.provider.downloadSigned(contract.edoDocumentId);
   }
 
-  /** Обработка подписанного документа */
+  /** Обрабатывает подписанный документ */
   private async onDocumentSigned(contractId: number, documentId: string) {
     // Скачиваем подписанный PDF
     const signedPdf = await this.provider.downloadSigned(documentId);

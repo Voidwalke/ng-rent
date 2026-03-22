@@ -1,10 +1,11 @@
-import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class PayInvoiceDto {
   @ApiPropertyOptional({ example: 60000, description: 'Сумма оплаты' })
   @IsOptional()
   @IsNumber()
+  @Min(0.01)
   paidAmount?: number;
 
   @ApiPropertyOptional({

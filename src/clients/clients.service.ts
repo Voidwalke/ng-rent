@@ -10,6 +10,7 @@ import { CreateClientDto } from './dto/create-client.dto';
 export class ClientsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Возвращает список клиентов с пагинацией и поиском */
   async findAll(
     tenantId: number,
     filters?: { search?: string; page?: number; limit?: number },
@@ -39,6 +40,7 @@ export class ClientsService {
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
+  /** Возвращает клиента по идентификатору */
   async findOne(id: number, tenantId?: number) {
     const client = await this.prisma.client.findFirst({
       where: { id, deletedAt: null, ...(tenantId && { tenantId }) },
@@ -47,12 +49,14 @@ export class ClientsService {
     return client;
   }
 
+  /** Создаёт нового клиента */
   async create(tenantId: number, dto: CreateClientDto) {
     return this.prisma.client.create({
       data: { ...dto, tenantId },
     });
   }
 
+  /** Обновляет данные клиента */
   async update(id: number, tenantId: number, dto: any) {
     await this.findOne(id, tenantId);
     return this.prisma.client.update({
@@ -61,6 +65,7 @@ export class ClientsService {
     });
   }
 
+  /** Удаляет клиента (мягкое удаление) */
   async softDelete(id: number, tenantId: number) {
     await this.findOne(id, tenantId);
     const activeContracts = await this.prisma.contract.count({
@@ -78,30 +83,57 @@ export class ClientsService {
     return { message: 'Клиент удалён' };
   }
 
+  /** Возвращает историю взаимодействий клиента */
   async getHistory(id: number, tenantId: number) {
     await this.findOne(id, tenantId);
     const [applications, contracts, invoices, payments] = await Promise.all([
       this.prisma.application.findMany({
         where: { clientId: id, tenantId },
         orderBy: { createdAt: 'desc' },
-        select: { id: true, status: true, desiredStart: true, desiredEnd: true, createdAt: true },
+        select: {
+          id: true,
+          status: true,
+          desiredStart: true,
+          desiredEnd: true,
+          createdAt: true,
+        },
       }),
       this.prisma.contract.findMany({
         where: { clientId: id, tenantId },
         orderBy: { createdAt: 'desc' },
-        select: { id: true, contractNumber: true, status: true, startDate: true, endDate: true, monthlyRent: true },
+        select: {
+          id: true,
+          contractNumber: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          monthlyRent: true,
+        },
       }),
       this.prisma.invoice.findMany({
         where: { tenantId, contract: { clientId: id } },
         orderBy: { dueDate: 'desc' },
         take: 50,
-        select: { id: true, invoiceNumber: true, status: true, totalAmount: true, dueDate: true, paidAt: true },
+        select: {
+          id: true,
+          invoiceNumber: true,
+          status: true,
+          totalAmount: true,
+          dueDate: true,
+          paidAt: true,
+        },
       }),
       this.prisma.payment.findMany({
         where: { tenantId, invoice: { contract: { clientId: id } } },
         orderBy: { createdAt: 'desc' },
         take: 50,
-        select: { id: true, amount: true, status: true, provider: true, createdAt: true },
+        select: {
+          id: true,
+          amount: true,
+          status: true,
+          provider: true,
+          createdAt: true,
+        },
       }),
     ]);
     return { applications, contracts, invoices, payments };

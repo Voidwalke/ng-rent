@@ -88,7 +88,12 @@ export class ContractsService {
 
     return this.prisma.$transaction(async (tx) => {
       // Защита от двойной аренды (внутри транзакции для атомарности)
-      await this.checkUnitOverlap(tx, app.unitId, app.desiredStart, app.desiredEnd);
+      await this.checkUnitOverlap(
+        tx,
+        app.unitId,
+        app.desiredStart,
+        app.desiredEnd,
+      );
 
       // Номер в формате D-{год}{месяц}-{порядковый}
       const now = new Date();
@@ -133,7 +138,13 @@ export class ContractsService {
 
     return this.prisma.$transaction(async (tx) => {
       // Проверяем, что помещение не занято другим договором (защита от race condition)
-      await this.checkUnitOverlap(tx, contract.unitId, contract.startDate, contract.endDate, id);
+      await this.checkUnitOverlap(
+        tx,
+        contract.unitId,
+        contract.startDate,
+        contract.endDate,
+        id,
+      );
 
       const updated = await tx.contract.update({
         where: { id },
@@ -179,7 +190,9 @@ export class ContractsService {
       });
 
       // Счёт на обеспечительный депозит (если указан)
-      const depositAmount = contract.depositAmount ? Number(contract.depositAmount) : 0;
+      const depositAmount = contract.depositAmount
+        ? Number(contract.depositAmount)
+        : 0;
       if (depositAmount > 0) {
         await tx.invoice.create({
           data: {
@@ -250,23 +263,44 @@ export class ContractsService {
         endDate: { gte: now, lte: deadline },
       },
       include: {
-        client: { select: { companyName: true, contactName: true, contactEmail: true } },
-        unit: { select: { unitNumber: true, floor: true, areaSqm: true, property: { select: { name: true } } } },
+        client: {
+          select: { companyName: true, contactName: true, contactEmail: true },
+        },
+        unit: {
+          select: {
+            unitNumber: true,
+            floor: true,
+            areaSqm: true,
+            property: { select: { name: true } },
+          },
+        },
       },
       orderBy: { endDate: 'asc' },
     });
   }
 
   /** Продлевает договор — создаёт новый на основе старого */
-  async renew(id: number, tenantId: number, data: { newEndDate: string; newMonthlyRent?: number }) {
+  async renew(
+    id: number,
+    tenantId: number,
+    data: { newEndDate: string; newMonthlyRent?: number },
+  ) {
     const contract = await this.findOne(id, tenantId);
     if (!['signed', 'active'].includes(contract.status)) {
-      throw new BadRequestException('Продлить можно только активный/подписанный договор');
+      throw new BadRequestException(
+        'Продлить можно только активный/подписанный договор',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
       // Проверяем overlap для нового периода (исключая текущий договор)
-      await this.checkUnitOverlap(tx, contract.unitId, contract.endDate, new Date(data.newEndDate), id);
+      await this.checkUnitOverlap(
+        tx,
+        contract.unitId,
+        contract.endDate,
+        new Date(data.newEndDate),
+        id,
+      );
 
       // Завершаем текущий
       await tx.contract.update({
@@ -303,7 +337,9 @@ export class ContractsService {
   async extend(id: number, tenantId: number, newEndDate: string) {
     const contract = await this.findOne(id, tenantId);
     if (!['signed', 'active'].includes(contract.status)) {
-      throw new BadRequestException('Продлить можно только активный/подписанный договор');
+      throw new BadRequestException(
+        'Продлить можно только активный/подписанный договор',
+      );
     }
     if (new Date(newEndDate) <= contract.endDate) {
       throw new BadRequestException('Новая дата должна быть позже текущей');
@@ -311,7 +347,13 @@ export class ContractsService {
 
     return this.prisma.$transaction(async (tx) => {
       // Проверяем, что продление не пересекается с другими договорами
-      await this.checkUnitOverlap(tx, contract.unitId, contract.endDate, new Date(newEndDate), id);
+      await this.checkUnitOverlap(
+        tx,
+        contract.unitId,
+        contract.endDate,
+        new Date(newEndDate),
+        id,
+      );
 
       return tx.contract.update({
         where: { id },
@@ -396,7 +438,9 @@ export class ContractsService {
       }
 
       // Возврат обеспечительного депозита — создаём кредит-ноту
-      const depositAmount = contract.depositAmount ? Number(contract.depositAmount) : 0;
+      const depositAmount = contract.depositAmount
+        ? Number(contract.depositAmount)
+        : 0;
       if (depositAmount > 0) {
         // Проверяем, был ли оплачен депозит
         const depositInvoice = await tx.invoice.findFirst({
@@ -407,7 +451,9 @@ export class ContractsService {
           },
         });
         if (depositInvoice) {
-          const invCount = await tx.invoice.count({ where: { contractId: id } });
+          const invCount = await tx.invoice.count({
+            where: { contractId: id },
+          });
           await tx.invoice.create({
             data: {
               tenantId: contract.tenantId,

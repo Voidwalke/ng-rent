@@ -1,4 +1,4 @@
-import { IsInt, IsString, IsOptional, IsEnum } from 'class-validator';
+import { IsInt, IsString, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateMaintenanceDto {
@@ -10,11 +10,17 @@ export class CreateMaintenanceDto {
   @IsString()
   title: string;
 
-  @ApiProperty({ example: 'Обнаружена течь в стояке холодной воды, нужен сантехник' })
+  @ApiProperty({
+    example: 'Обнаружена течь в стояке холодной воды, нужен сантехник',
+  })
   @IsString()
   description: string;
 
-  @ApiProperty({ example: 'high', enum: ['low', 'medium', 'high'], required: false })
+  @ApiProperty({
+    example: 'high',
+    enum: ['low', 'medium', 'high'],
+    required: false,
+  })
   @IsOptional()
   @IsString()
   priority?: string;

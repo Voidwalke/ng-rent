@@ -22,7 +22,10 @@ export class CreateTicketDto {
   @IsEnum(['low', 'medium', 'high'])
   priority?: 'low' | 'medium' | 'high';
 
-  @ApiProperty({ example: 'Кондиционер не включается с понедельника, температура в офисе 28 градусов' })
+  @ApiProperty({
+    example:
+      'Кондиционер не включается с понедельника, температура в офисе 28 градусов',
+  })
   @IsString()
   message: string;
 }
