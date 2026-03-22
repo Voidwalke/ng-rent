@@ -5,6 +5,7 @@ import {
   Patch,
   Param,
   Body,
+  Query,
   ParseIntPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -21,8 +22,17 @@ export class ApplicationsController {
 
   @Get()
   @ApiOperation({ summary: 'Список заявок' })
-  findAll(@CurrentUser('tenantId') tenantId: number) {
-    return this.applicationsService.findAll(tenantId);
+  findAll(
+    @CurrentUser('tenantId') tenantId: number,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.applicationsService.findAll(tenantId, {
+      status,
+      page: page ? +page : undefined,
+      limit: limit ? +limit : undefined,
+    });
   }
 
   @Get(':id')

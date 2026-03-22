@@ -22,7 +22,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: node dist/queue/queue.worker.js
+    command: node dist/main
+    environment:
+      - WORKER_MODE=true
     env_file:
       - .env
     depends_on:

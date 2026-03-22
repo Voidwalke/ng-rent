@@ -4,6 +4,7 @@ import {
   Post,
   Param,
   Body,
+  Query,
   ParseIntPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -19,8 +20,17 @@ export class ClientsController {
 
   @Get()
   @ApiOperation({ summary: 'Список клиентов' })
-  findAll(@CurrentUser('tenantId') tenantId: number) {
-    return this.clientsService.findAll(tenantId);
+  findAll(
+    @CurrentUser('tenantId') tenantId: number,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.clientsService.findAll(tenantId, {
+      search,
+      page: page ? +page : undefined,
+      limit: limit ? +limit : undefined,
+    });
   }
 
   @Get(':id')

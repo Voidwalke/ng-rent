@@ -12,17 +12,40 @@ import { validateTransition } from './state-machine';
 export class ApplicationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(tenantId: number) {
-    return this.prisma.application.findMany({
-      where: { tenantId },
-      include: {
-        unit: {
-          select: { id: true, floor: true, areaSqm: true, priceMonth: true },
+  async findAll(
+    tenantId: number,
+    filters?: { status?: string; page?: number; limit?: number },
+  ) {
+    const where: any = { tenantId };
+    if (filters?.status) where.status = filters.status;
+
+    const page = filters?.page || 1;
+    const limit = Math.min(filters?.limit || 50, 100);
+
+    const [data, total] = await Promise.all([
+      this.prisma.application.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          unit: {
+            select: {
+              id: true,
+              floor: true,
+              areaSqm: true,
+              priceMonth: true,
+            },
+          },
+          client: {
+            select: { id: true, companyName: true, contactName: true },
+          },
         },
-        client: { select: { id: true, companyName: true, contactName: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.application.count({ where }),
+    ]);
+
+    return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
   async findOne(id: number, tenantId?: number) {

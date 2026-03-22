@@ -4,6 +4,7 @@ import {
   Post,
   Patch,
   Param,
+  Body,
   Res,
   ParseIntPipe,
 } from '@nestjs/common';
@@ -76,8 +77,9 @@ export class ContractsController {
   terminate(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('tenantId') tenantId: number,
+    @Body('reason') reason?: string,
   ) {
-    return this.contractsService.terminate(id, undefined, tenantId);
+    return this.contractsService.terminate(id, reason, tenantId);
   }
 
   @Get(':id/pdf')

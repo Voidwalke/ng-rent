@@ -13,21 +13,37 @@ export class AccessControlService {
   /** Возвращает список карт доступа с фильтрацией */
   async findAll(
     tenantId: number,
-    filters?: { clientId?: number; contractId?: number; isActive?: boolean },
+    filters?: {
+      clientId?: number;
+      contractId?: number;
+      isActive?: boolean;
+      page?: number;
+      limit?: number;
+    },
   ) {
     const where: any = { tenantId };
     if (filters?.clientId) where.clientId = filters.clientId;
     if (filters?.contractId) where.contractId = filters.contractId;
     if (filters?.isActive !== undefined) where.isActive = filters.isActive;
 
-    return this.prisma.accessCard.findMany({
-      where,
-      include: {
-        client: { select: { companyName: true } },
-        contract: { select: { contractNumber: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const page = filters?.page || 1;
+    const limit = Math.min(filters?.limit || 50, 100);
+
+    const [data, total] = await Promise.all([
+      this.prisma.accessCard.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          client: { select: { companyName: true } },
+          contract: { select: { contractNumber: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.accessCard.count({ where }),
+    ]);
+
+    return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
   /** Возвращает карту доступа по идентификатору */
