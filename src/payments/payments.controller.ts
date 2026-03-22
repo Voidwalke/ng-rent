@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
+import { YookassaWebhookDto } from './dto/yookassa-webhook.dto';
 import { CurrentUser, Public, Roles } from '../common/decorators';
 
 @ApiTags('Платежи')
@@ -42,7 +43,7 @@ export class PaymentsController {
   @Post('webhook/yookassa')
   @Public()
   @ApiOperation({ summary: 'Вебхук ЮKassa' })
-  handleWebhook(@Body() body: any, @Headers('x-signature') signature: string) {
+  handleWebhook(@Body() body: YookassaWebhookDto, @Headers('x-signature') signature: string) {
     return this.paymentsService.handleWebhook(body, signature);
   }
 

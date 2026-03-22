@@ -19,7 +19,7 @@ export class CreatePropertyDto {
   @IsNumber()
   totalArea: number;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ example: 'Современный бизнес-центр класса А', required: false })
   @IsOptional()
   @IsString()
   description?: string;

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { TenantPortalService } from './tenant-portal.service';
+import { CreatePortalApplicationDto } from './dto/create-portal-application.dto';
 import { CurrentUser } from '../common/decorators';
 
 @ApiTags('Личный кабинет арендатора')
@@ -27,16 +28,9 @@ export class TenantPortalController {
   @ApiOperation({ summary: 'Подать заявку через каталог' })
   createApplication(
     @CurrentUser() user: any,
-    @Body()
-    body: {
-      unitId: number;
-      desiredStart: string;
-      desiredEnd: string;
-      desiredPrice?: number;
-      comment?: string;
-    },
+    @Body() dto: CreatePortalApplicationDto,
   ) {
-    return this.portalService.createApplication(user.tenantId, user.id, body);
+    return this.portalService.createApplication(user.tenantId, user.id, dto);
   }
 
   @Get('applications/:id')

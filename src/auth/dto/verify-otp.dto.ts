@@ -2,7 +2,7 @@ import { IsString, Length } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class VerifyOtpDto {
-  @ApiProperty({ description: 'Временный токен из login' })
+  @ApiProperty({ example: 'eyJhbGciOiJIUzI1NiIs...', description: 'Временный токен из login' })
   @IsString()
   tempToken: string;
 

@@ -10,6 +10,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SupportService } from './support.service';
+import { CreateTicketDto } from './dto/create-ticket.dto';
+import { AddMessageDto } from './dto/add-message.dto';
 import { CurrentUser, Roles } from '../common/decorators';
 import { TicketStatus } from '@prisma/client';
 
@@ -23,15 +25,9 @@ export class SupportController {
   @ApiOperation({ summary: 'Создать тикет' })
   create(
     @CurrentUser() user: any,
-    @Body()
-    body: {
-      subject: string;
-      category?: string;
-      priority?: 'low' | 'medium' | 'high';
-      message: string;
-    },
+    @Body() dto: CreateTicketDto,
   ) {
-    return this.supportService.createTicket(user.tenantId, user.id, body);
+    return this.supportService.createTicket(user.tenantId, user.id, dto);
   }
 
   @Get('tickets')
@@ -60,9 +56,9 @@ export class SupportController {
   addMessage(
     @CurrentUser() user: any,
     @Param('id', ParseIntPipe) id: number,
-    @Body('message') message: string,
+    @Body() dto: AddMessageDto,
   ) {
-    return this.supportService.addMessage(user.tenantId, id, user.id, message);
+    return this.supportService.addMessage(user.tenantId, id, user.id, dto.message);
   }
 
   @Patch('tickets/:id/resolve')

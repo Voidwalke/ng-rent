@@ -2,6 +2,7 @@ import { Controller, Post, Delete, Body } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser } from '../common/decorators';
+import { PushSubscribeDto } from './dto/push-subscribe.dto';
 
 @ApiTags('Push-уведомления')
 @ApiBearerAuth()
@@ -13,25 +14,19 @@ export class PushController {
   @ApiOperation({ summary: 'Подписка на push-уведомления' })
   async subscribe(
     @CurrentUser() user: any,
-    @Body()
-    body: {
-      endpoint: string;
-      keys: { p256dh: string; auth: string };
-      deviceInfo?: string;
-    },
+    @Body() dto: PushSubscribeDto,
   ) {
-    // Удаляем старую подписку с тем же endpoint
     await this.prisma.pushSubscription.deleteMany({
-      where: { endpoint: body.endpoint },
+      where: { endpoint: dto.endpoint },
     });
 
     return this.prisma.pushSubscription.create({
       data: {
         userId: user.id,
-        endpoint: body.endpoint,
-        keysP256dh: body.keys.p256dh,
-        keysAuth: body.keys.auth,
-        deviceInfo: body.deviceInfo,
+        endpoint: dto.endpoint,
+        keysP256dh: dto.keys.p256dh,
+        keysAuth: dto.keys.auth,
+        deviceInfo: dto.deviceInfo,
       },
     });
   }

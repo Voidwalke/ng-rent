@@ -24,7 +24,7 @@ export class CreateUnitDto {
   @IsEnum(UnitStatus)
   status?: UnitStatus;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ example: 'Угловой офис с панорамным остеклением', required: false })
   @IsOptional()
   @IsString()
   description?: string;

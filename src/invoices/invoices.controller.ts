@@ -15,6 +15,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { InvoicesService } from './invoices.service';
+import { PayInvoiceDto } from './dto/pay-invoice.dto';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
 
@@ -59,13 +60,13 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Подтвердить оплату' })
   pay(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { paidAmount?: number; paymentReference?: string },
+    @Body() dto: PayInvoiceDto,
     @CurrentUser('tenantId') tenantId: number,
   ) {
     return this.invoicesService.pay(
       id,
-      body.paidAmount,
-      body.paymentReference,
+      dto.paidAmount,
+      dto.paymentReference,
       tenantId,
     );
   }

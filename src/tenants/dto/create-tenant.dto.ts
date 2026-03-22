@@ -11,7 +11,7 @@ export class CreateTenantDto {
   @IsString()
   slug: string;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ example: '7703456789', required: false })
   @IsOptional()
   @IsString()
   inn?: string;
