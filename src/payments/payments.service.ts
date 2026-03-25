@@ -85,12 +85,8 @@ export class PaymentsService {
     };
   }
 
-  /** Обрабатывает вебхук от ЮKassa */
-  async handleWebhook(body: any, signature: string) {
-    if (!this.provider.verifyWebhook(body, signature)) {
-      throw new BadRequestException('Невалидная подпись вебхука');
-    }
-
+  /** Обрабатывает вебхук от ЮKassa (верификация через IP-whitelist на nginx) */
+  async handleWebhook(body: any) {
     const event = body.event;
     const paymentData = body.object;
 
@@ -238,10 +234,18 @@ export class PaymentsService {
         `Сумма возврата должна быть от 0.01 до ${String(payment.amount)} ₽`,
       );
     }
-    const result = await this.provider.createRefund(
-      payment.externalId,
-      refundAmount,
-    );
+    let result: { id: string; status: string };
+    try {
+      result = await this.provider.createRefund(
+        payment.externalId,
+        refundAmount,
+      );
+    } catch (err: any) {
+      this.logger.error(`Ошибка возврата: ${err.message}`);
+      throw new BadRequestException(
+        'Не удалось создать возврат в платёжной системе',
+      );
+    }
 
     await this.prisma.payment.update({
       where: { id: payment.id },

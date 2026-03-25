@@ -30,7 +30,7 @@ export class NotificationsService {
     const vapidPrivate = this.config.get('VAPID_PRIVATE_KEY', '');
     if (vapidPublic && vapidPrivate) {
       webpush.setVapidDetails(
-        'mailto:support@ngrent.ru',
+        this.config.get('VAPID_SUBJECT', 'mailto:support@ngrent.ru'),
         vapidPublic,
         vapidPrivate,
       );

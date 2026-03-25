@@ -475,10 +475,14 @@ export class AuthService {
       'http://localhost:5173',
     );
     const resetUrl = `${frontendUrl}/auth/reset-password?token=${token}`;
-    await this.mailer.send(user.email, 'Сброс пароля', 'reset-password', {
-      resetUrl,
-    });
-    this.logger.debug(`Reset email отправлен на ${user.email}`);
+    try {
+      await this.mailer.send(user.email, 'Сброс пароля', 'reset-password', {
+        resetUrl,
+      });
+      this.logger.debug(`Reset email отправлен на ${user.email}`);
+    } catch {
+      this.logger.error(`Не удалось отправить reset email на ${user.email}`);
+    }
     return { message: 'Если email существует, ссылка для сброса отправлена' };
   }
 

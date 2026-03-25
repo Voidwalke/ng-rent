@@ -1,7 +1,11 @@
-import { IsString, IsObject, IsOptional } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsObject } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class YookassaWebhookDto {
+  @ApiProperty({ example: 'notification', description: 'Тип уведомления' })
+  @IsString()
+  type: string;
+
   @ApiProperty({ example: 'payment.succeeded', description: 'Тип события' })
   @IsString()
   event: string;
@@ -11,15 +15,11 @@ export class YookassaWebhookDto {
       id: '2b4b3f7a-a01e-11eb-a8a0-0242ac130003',
       status: 'succeeded',
       amount: { value: '60000.00', currency: 'RUB' },
-      metadata: { invoiceId: '1' },
+      payment_method: { type: 'bank_card', title: 'Bank card *1026' },
+      metadata: { invoiceId: '1', tenantId: '1' },
     },
-    description: 'Объект платежа',
+    description: 'Объект платежа ЮKassa',
   })
   @IsObject()
-  object: any;
-
-  @ApiPropertyOptional({ example: 'notification' })
-  @IsOptional()
-  @IsString()
-  type?: string;
+  object: Record<string, any>;
 }

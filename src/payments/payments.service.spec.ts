@@ -99,23 +99,20 @@ describe('PaymentsService', () => {
       });
       mockPrisma.invoice.update.mockResolvedValueOnce({});
 
-      const result = await service.handleWebhook(
-        {
-          event: 'payment.succeeded',
-          object: { id: 'ext_1', payment_method: { type: 'card' } },
-        },
-        'sig',
-      );
+      const result = await service.handleWebhook({
+        event: 'payment.succeeded',
+        object: { id: 'ext_1', payment_method: { type: 'card' } },
+      });
       expect(result.status).toBe('ok');
     });
 
     it('должен игнорировать неизвестный платёж', async () => {
       mockPrisma.payment.findFirst.mockResolvedValueOnce(null); // dedup
       mockPrisma.payment.findFirst.mockResolvedValueOnce(null); // actual
-      const result = await service.handleWebhook(
-        { event: 'payment.succeeded', object: { id: 'unknown' } },
-        'sig',
-      );
+      const result = await service.handleWebhook({
+        event: 'payment.succeeded',
+        object: { id: 'unknown' },
+      });
       expect(result.status).toBe('ignored');
     });
   });

@@ -62,7 +62,7 @@ export class MailerService {
 
     this.transporter = nodemailer.createTransport({
       host: this.config.get('SMTP_HOST', 'localhost'),
-      port: this.config.get<number>('SMTP_PORT', 1025),
+      port: Number(this.config.get('SMTP_PORT', 1025)),
       secure: this.config.get('SMTP_SECURE', 'false') === 'true',
       tls: {
         rejectUnauthorized:
@@ -105,7 +105,8 @@ export class MailerService {
       });
       this.logger.log(`Email отправлен: ${to} — ${subject}`);
     } catch (err: any) {
-      this.logger.error(`Ошибка отправки email: ${err.message}`);
+      this.logger.error(`Ошибка отправки email ${to}: ${err.message}`);
+      throw err;
     }
   }
 
@@ -119,7 +120,8 @@ export class MailerService {
         html: this.wrapLayout(html),
       });
     } catch (err: any) {
-      this.logger.error(`Ошибка отправки email: ${err.message}`);
+      this.logger.error(`Ошибка отправки email ${to}: ${err.message}`);
+      throw err;
     }
   }
 

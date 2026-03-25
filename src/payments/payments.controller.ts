@@ -5,12 +5,12 @@ import {
   Param,
   Query,
   Body,
-  Headers,
   ParseIntPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { YookassaWebhookDto } from './dto/yookassa-webhook.dto';
+import { RefundDto } from './dto/refund.dto';
 import { CurrentUser, Public, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
 
@@ -37,19 +37,16 @@ export class PaymentsController {
   refund(
     @CurrentUser() user: any,
     @Param('invoiceId', ParseIntPipe) invoiceId: number,
-    @Body('amount') amount?: number,
+    @Body() dto: RefundDto,
   ) {
-    return this.paymentsService.refund(user.tenantId, invoiceId, amount);
+    return this.paymentsService.refund(user.tenantId, invoiceId, dto.amount);
   }
 
   @Post('webhook/yookassa')
   @Public()
   @ApiOperation({ summary: 'Вебхук ЮKassa' })
-  handleWebhook(
-    @Body() body: YookassaWebhookDto,
-    @Headers('x-signature') signature: string,
-  ) {
-    return this.paymentsService.handleWebhook(body, signature);
+  handleWebhook(@Body() body: YookassaWebhookDto) {
+    return this.paymentsService.handleWebhook(body);
   }
 
   @Get()

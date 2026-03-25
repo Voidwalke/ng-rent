@@ -60,19 +60,23 @@ export class YookassaProvider implements PaymentProvider {
         },
         description,
         metadata,
-        receipt: {
-          customer: { email: metadata.email },
-          items: [
-            {
-              description,
-              quantity: '1.00',
-              amount: { value: amount.toFixed(2), currency },
-              vat_code: 2,
-              payment_subject: 'service',
-              payment_mode: 'full_payment',
-            },
-          ],
-        },
+        ...(metadata.email
+          ? {
+              receipt: {
+                customer: { email: metadata.email },
+                items: [
+                  {
+                    description: description.slice(0, 128),
+                    quantity: '1.00',
+                    amount: { value: amount.toFixed(2), currency },
+                    vat_code: 2,
+                    payment_subject: 'service',
+                    payment_mode: 'full_payment',
+                  },
+                ],
+              },
+            }
+          : {}),
       }),
     });
 

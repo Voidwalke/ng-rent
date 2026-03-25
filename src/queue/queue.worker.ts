@@ -61,12 +61,18 @@ export class QueueWorker implements OnModuleInit {
     }
 
     if (payload.email && payload.emailTemplate) {
-      await this.mailer.send(
-        payload.email,
-        payload.title,
-        payload.emailTemplate,
-        payload.emailData || {},
-      );
+      try {
+        await this.mailer.send(
+          payload.email,
+          payload.title,
+          payload.emailTemplate,
+          payload.emailData || {},
+        );
+      } catch (err: any) {
+        this.logger.error(
+          `Ошибка отправки email ${payload.email}: ${err.message}`,
+        );
+      }
     }
 
     this.logger.log(`Уведомление обработано: ${type}`);
