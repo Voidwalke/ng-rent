@@ -50,6 +50,12 @@ const TEMPLATES: Record<string, string> = {
     <p>Ваш код: <strong style="font-size: 24px;">{{code}}</strong></p>
     <p>Код действителен 5 минут.</p>
   `,
+  'contract-expiring': `
+    <h2>Договор истекает</h2>
+    <p>Договор №{{contractNumber}} истекает {{endDate}}.</p>
+    <p>Объект: {{propertyName}}, помещение №{{unitNumber}}</p>
+    <p>Свяжитесь с управляющей компанией для продления.</p>
+  `,
 };
 
 @Injectable()

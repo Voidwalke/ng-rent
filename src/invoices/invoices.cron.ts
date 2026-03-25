@@ -355,12 +355,12 @@ export class InvoicesCron {
               await this.mailer.send(
                 email,
                 `Договор ${contract.contractNumber} истекает через ${days} дней`,
-                'contract-ready',
+                'contract-expiring',
                 {
                   contractNumber: contract.contractNumber,
                   endDate: contract.endDate.toLocaleDateString('ru-RU'),
-                  unit: contract.unit?.unitNumber || '',
-                  property: contract.unit?.property?.name || '',
+                  unitNumber: contract.unit?.unitNumber || '',
+                  propertyName: contract.unit?.property?.name || '',
                 },
               );
               sent++;
