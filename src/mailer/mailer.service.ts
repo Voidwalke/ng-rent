@@ -7,7 +7,9 @@ const TEMPLATES: Record<string, string> = {
   welcome: `
     <h2>Добро пожаловать в NG RENT!</h2>
     <p>{{userName}}, ваша организация <strong>{{tenantName}}</strong> успешно зарегистрирована.</p>
-    <p>Войдите в систему и настройте первый объект недвижимости.</p>
+    <p>Подтвердите ваш email, перейдя по ссылке:</p>
+    <a href="{{verifyUrl}}" style="display:inline-block;padding:12px 24px;background:#1890ff;color:#fff;text-decoration:none;border-radius:4px;">Подтвердить email</a>
+    <p style="margin-top:16px;">Войдите в систему и настройте первый объект недвижимости.</p>
   `,
   invoice: `
     <h2>Выставлен счёт №{{invoiceNumber}}</h2>

@@ -147,7 +147,13 @@ export class AuthService {
       return { tenant, user, subscription, subscriptionInvoice };
     });
 
-    await this.sendVerificationEmail(result.user.id, result.user.email);
+    try {
+      await this.sendVerificationEmail(result.user.id, result.user.email);
+    } catch {
+      this.logger.error(
+        `Не удалось отправить verification email на ${result.user.email}`,
+      );
+    }
 
     const tokens = await this.generateTokens({
       userId: result.user.id,
@@ -228,10 +234,14 @@ export class AuthService {
         { expiresIn: '5m' },
       );
 
-      await this.mailer.send(user.email, 'Код подтверждения', 'otp', {
-        code: otp,
-      });
-      this.logger.debug(`OTP отправлен на ${user.email}`);
+      try {
+        await this.mailer.send(user.email, 'Код подтверждения', 'otp', {
+          code: otp,
+        });
+        this.logger.debug(`OTP отправлен на ${user.email}`);
+      } catch {
+        this.logger.error(`Не удалось отправить OTP на ${user.email}`);
+      }
 
       return { requires2fa: true, tempToken };
     }
@@ -339,10 +349,14 @@ export class AuthService {
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
     await this.redis.set(`otp:${userId}`, otpHash, OTP_TTL);
 
-    await this.mailer.send(user.email, 'Код подтверждения', 'otp', {
-      code: otp,
-    });
-    this.logger.debug(`OTP отправлен на ${user.email}`);
+    try {
+      await this.mailer.send(user.email, 'Код подтверждения', 'otp', {
+        code: otp,
+      });
+      this.logger.debug(`OTP отправлен на ${user.email}`);
+    } catch {
+      this.logger.error(`Не удалось отправить OTP на ${user.email}`);
+    }
     return { message: 'Код отправлен на email' };
   }
 
@@ -542,11 +556,15 @@ export class AuthService {
       where: { id: tenantId },
     });
     const inviteUrl = `${frontendUrl}/auth/accept-invite?token=${token}`;
-    await this.mailer.send(dto.email, 'Приглашение в NG RENT', 'invite', {
-      tenantName: tenant?.name || 'NG RENT',
-      inviteUrl,
-    });
-    this.logger.debug(`Приглашение отправлено на ${dto.email}`);
+    try {
+      await this.mailer.send(dto.email, 'Приглашение в NG RENT', 'invite', {
+        tenantName: tenant?.name || 'NG RENT',
+        inviteUrl,
+      });
+      this.logger.debug(`Приглашение отправлено на ${dto.email}`);
+    } catch {
+      this.logger.error(`Не удалось отправить приглашение на ${dto.email}`);
+    }
     return { message: 'Приглашение отправлено', email: dto.email };
   }
 
