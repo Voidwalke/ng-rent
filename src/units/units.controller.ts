@@ -8,6 +8,7 @@ import {
   Body,
   Query,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { UnitsService } from './units.service';
@@ -16,6 +17,10 @@ import { UpdateUnitDto } from './dto/update-unit.dto';
 import { FilterUnitDto } from './dto/filter-unit.dto';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
+import {
+  TariffLimitGuard,
+  CheckLimit,
+} from '../common/guards/tariff-limit.guard';
 
 @ApiTags('Помещения')
 @Controller('units')
@@ -45,6 +50,8 @@ export class UnitsController {
   @Post()
   @ApiBearerAuth()
   @Roles(UserRole.admin, UserRole.manager)
+  @UseGuards(TariffLimitGuard)
+  @CheckLimit('units')
   @ApiOperation({ summary: 'Создать помещение' })
   create(
     @CurrentUser('tenantId') tenantId: number,

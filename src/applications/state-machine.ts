@@ -9,8 +9,9 @@ const TRANSITIONS: Record<ApplicationStatus, ApplicationStatus[]> = {
   approved: ['contract_sent'],
   rejected: [],
   contract_sent: ['signed'],
-  signed: ['active'],
-  active: [],
+  signed: ['active', 'terminated'],
+  active: ['terminated'],
+  terminated: [],
 };
 
 export function validateTransition(

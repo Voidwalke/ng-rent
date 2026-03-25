@@ -107,7 +107,13 @@ export class Integration1CService {
             },
           };
 
-          await this.provider.exportEntity(payload);
+          const result = await this.provider.exportEntity(payload);
+          if (result.success) {
+            await this.prisma.contract.update({
+              where: { id: contract.id },
+              data: { edoStatus: 'exported_to_1c' },
+            });
+          }
         } catch (err: any) {
           this.logger.error(`Экспорт договора ${contract.id}: ${err.message}`);
         }
@@ -123,6 +129,19 @@ export class Integration1CService {
 
   /** Ручной экспорт всех неотправленных счетов и договоров */
   async exportAll(tenantId: number) {
+    try {
+      return await this._doExportAll(tenantId);
+    } catch (err: any) {
+      this.logger.error(`Ошибка экспорта в 1С: ${err.message}`);
+      return {
+        invoices: { total: 0, sent: 0 },
+        contracts: { total: 0, sent: 0 },
+        error: 'Ошибка при экспорте в 1С',
+      };
+    }
+  }
+
+  private async _doExportAll(tenantId: number) {
     const invoices = await this.prisma.invoice.findMany({
       where: { tenantId, paymentReference: null, status: 'pending' },
       include: {
@@ -134,6 +153,10 @@ export class Integration1CService {
 
     let invoicesSent = 0;
     for (const invoice of invoices) {
+      if (!invoice.contract?.client || !invoice.contract?.unit?.property) {
+        this.logger.warn(`Счёт #${invoice.id} пропущен — неполные данные`);
+        continue;
+      }
       const result = await this.provider.exportEntity({
         type: 'invoice',
         tenantId,
@@ -166,6 +189,12 @@ export class Integration1CService {
 
     let contractsSent = 0;
     for (const contract of contracts) {
+      if (!contract.client) {
+        this.logger.warn(
+          `Договор #${contract.id} пропущен — нет данных контрагента`,
+        );
+        continue;
+      }
       const result = await this.provider.exportEntity({
         type: 'contract',
         tenantId,
@@ -180,7 +209,13 @@ export class Integration1CService {
           clientName: contract.client.companyName,
         },
       });
-      if (result.success) contractsSent++;
+      if (result.success) {
+        await this.prisma.contract.update({
+          where: { id: contract.id },
+          data: { edoStatus: 'exported_to_1c' },
+        });
+        contractsSent++;
+      }
     }
 
     this.logger.log(

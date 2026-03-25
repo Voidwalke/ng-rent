@@ -51,8 +51,21 @@ export class ImportService {
 
   /** Временное хранилище CSV-данных между createJob и confirmImport */
   private pendingFiles = new Map<number, string>();
+  /** TTL для pendingFiles — 30 минут */
+  private readonly PENDING_TTL = 30 * 60 * 1000;
 
   constructor(private prisma: PrismaService) {}
+
+  /** Сохраняет файл с автоочисткой по таймауту */
+  private setPendingFile(jobId: number, content: string) {
+    this.pendingFiles.set(jobId, content);
+    setTimeout(() => {
+      if (this.pendingFiles.has(jobId)) {
+        this.pendingFiles.delete(jobId);
+        this.logger.debug(`Pending file for job ${jobId} expired (TTL)`);
+      }
+    }, this.PENDING_TTL);
+  }
 
   /** Создаёт задачу импорта из загруженного файла */
   async createJob(
@@ -87,7 +100,7 @@ export class ImportService {
     });
 
     // Сохраняем содержимое для последующего импорта
-    this.pendingFiles.set(job.id, fileContent);
+    this.setPendingFile(job.id, fileContent);
 
     this.logger.log(
       `Импорт ${type}: загружен файл, ${rows.length} строк, заголовки: ${headers.join(', ')}`,
@@ -243,11 +256,15 @@ export class ImportService {
             }
           }
 
+          if (!unit) {
+            throw new Error('Помещение обязательно для импорта договора');
+          }
+
           // Создаём заявку-заглушку для связи
           const application = await this.prisma.application.create({
             data: {
               tenantId,
-              unitId: unit?.id || 0,
+              unitId: unit.id,
               clientId: client.id,
               desiredStart: new Date(startDate),
               desiredEnd: new Date(endDate),
@@ -260,7 +277,7 @@ export class ImportService {
               tenantId,
               applicationId: application.id,
               clientId: client.id,
-              unitId: unit?.id || 0,
+              unitId: unit.id,
               contractNumber,
               startDate: new Date(startDate),
               endDate: new Date(endDate),

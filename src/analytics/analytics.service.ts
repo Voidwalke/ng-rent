@@ -61,10 +61,23 @@ export class AnalyticsService {
         ? Math.round((overdueInvoices / totalInvoices) * 100)
         : 0;
 
-    const avgResult = await this.prisma.contract.aggregate({
+    // Расчёт средней ставки за кв.м: сумма аренды / сумма площади по активным договорам
+    const activeContractUnits = await this.prisma.contract.findMany({
       where: { tenantId, status: 'active' },
-      _avg: { monthlyRent: true },
+      select: { monthlyRent: true, unit: { select: { areaSqm: true } } },
     });
+    const totalRent = activeContractUnits.reduce(
+      (s, c) => s + Number(c.monthlyRent),
+      0,
+    );
+    const totalRentedArea = activeContractUnits.reduce(
+      (s, c) => s + Number(c.unit?.areaSqm || 0),
+      0,
+    );
+    const avgRentPerSqm =
+      totalRentedArea > 0
+        ? Math.round((totalRent / totalRentedArea) * 100) / 100
+        : 0;
 
     const result: DashboardData = {
       totalProperties,
@@ -75,7 +88,7 @@ export class AnalyticsService {
       overdueRate,
       activeContracts,
       pendingApplications,
-      avgRentPerSqm: Number(avgResult._avg.monthlyRent) || 0,
+      avgRentPerSqm,
     };
 
     await this.redis.set(cacheKey, result, 900);

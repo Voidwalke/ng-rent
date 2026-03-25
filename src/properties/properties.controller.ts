@@ -8,6 +8,7 @@ import {
   Body,
   Query,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,6 +22,10 @@ import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
+import {
+  TariffLimitGuard,
+  CheckLimit,
+} from '../common/guards/tariff-limit.guard';
 
 @ApiTags('Объекты недвижимости')
 @ApiBearerAuth()
@@ -72,6 +77,8 @@ export class PropertiesController {
 
   @Post()
   @Roles(UserRole.admin, UserRole.manager)
+  @UseGuards(TariffLimitGuard)
+  @CheckLimit('properties')
   @ApiOperation({ summary: 'Создать объект' })
   @ApiResponse({ status: 201, description: 'Объект создан' })
   @ApiResponse({ status: 403, description: 'Недостаточно прав' })

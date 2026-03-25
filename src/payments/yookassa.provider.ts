@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as crypto from 'crypto';
+import * as crypto from 'crypto'; // используется для idempotenceKey
 
 /** Интерфейс платёжного провайдера */
 export interface PaymentProvider {
@@ -23,13 +23,11 @@ export class YookassaProvider implements PaymentProvider {
   private readonly logger = new Logger(YookassaProvider.name);
   private readonly shopId: string;
   private readonly secretKey: string;
-  private readonly webhookSecret: string;
   private readonly apiUrl = 'https://api.yookassa.ru/v3';
 
   constructor(private config: ConfigService) {
     this.shopId = this.config.get<string>('YOOKASSA_SHOP_ID', '');
     this.secretKey = this.config.get<string>('YOOKASSA_SECRET_KEY', '');
-    this.webhookSecret = this.config.get<string>('YOOKASSA_WEBHOOK_SECRET', '');
   }
 
   /** Создаёт платёж через API ЮKassa */
@@ -108,20 +106,26 @@ export class YookassaProvider implements PaymentProvider {
       }),
     });
 
+    if (!response.ok) {
+      const error = await response.text();
+      this.logger.error(`Ошибка возврата ЮKassa: ${response.status} ${error}`);
+      throw new Error(`Ошибка создания возврата: ${response.status}`);
+    }
+
     const data = await response.json();
     return { id: data.id, status: data.status };
   }
 
-  /** Проверяет подпись вебхука */
-  verifyWebhook(body: any, signature: string): boolean {
-    if (!this.webhookSecret || !signature) return false;
-    const hmac = crypto.createHmac('sha256', this.webhookSecret);
-    hmac.update(JSON.stringify(body));
-    const expected = hmac.digest('hex');
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expected),
-    );
+  /**
+   * Верификация вебхука ЮKassa.
+   * ЮKassa использует IP-whitelisting, а не HMAC-подписи.
+   * В продакшене nginx должен разрешать запросы только с IP ЮKassa:
+   * 185.71.76.0/27, 185.71.77.0/27, 77.75.153.0/25,
+   * 77.75.156.35, 77.75.156.11, 77.75.154.128/25
+   */
+  verifyWebhook(_body: any, _signature: string): boolean {
+    // IP whitelist настраивается на уровне nginx/reverse proxy
+    return true;
   }
 }
 

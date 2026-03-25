@@ -1,5 +1,5 @@
-import { IsString, IsNumber, IsDateString } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNumber, IsDateString, IsOptional } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class PaymentWebhookDto {
   @ApiProperty({ example: 'INV-2024-0001' })
@@ -17,4 +17,9 @@ export class PaymentWebhookDto {
   @ApiProperty({ example: 'PAY-123456' })
   @IsString()
   paymentReference: string;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsNumber()
+  tenantId?: number;
 }

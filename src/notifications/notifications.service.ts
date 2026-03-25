@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from './notifications.gateway';
+import * as webpush from 'web-push';
 
 export type NotificationType =
   | 'application_submitted'
@@ -16,10 +18,26 @@ export type NotificationType =
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+  private pushEnabled = false;
+
   constructor(
     private prisma: PrismaService,
     private gateway: NotificationsGateway,
-  ) {}
+    private config: ConfigService,
+  ) {
+    const vapidPublic = this.config.get('VAPID_PUBLIC_KEY', '');
+    const vapidPrivate = this.config.get('VAPID_PRIVATE_KEY', '');
+    if (vapidPublic && vapidPrivate) {
+      webpush.setVapidDetails(
+        'mailto:support@ngrent.ru',
+        vapidPublic,
+        vapidPrivate,
+      );
+      this.pushEnabled = true;
+      this.logger.log('Web Push уведомления включены');
+    }
+  }
 
   /** Создаёт уведомление и отправляет через WebSocket */
   async create(data: {
@@ -48,6 +66,9 @@ export class NotificationsService {
       message: data.message,
       createdAt: notification.createdAt,
     });
+
+    // Push-уведомление
+    await this.sendPush(data.userId, data.title, data.message);
 
     return notification;
   }
@@ -126,6 +147,41 @@ export class NotificationsService {
       data: { readAt: new Date() },
     });
     return { message: 'Все уведомления прочитаны' };
+  }
+
+  /** Отправляет push-уведомление на все устройства пользователя */
+  private async sendPush(userId: number, title: string, body: string) {
+    if (!this.pushEnabled) return;
+
+    try {
+      const subscriptions = await this.prisma.pushSubscription.findMany({
+        where: { userId },
+      });
+
+      for (const sub of subscriptions) {
+        try {
+          await webpush.sendNotification(
+            {
+              endpoint: sub.endpoint,
+              keys: { p256dh: sub.keysP256dh, auth: sub.keysAuth },
+            },
+            JSON.stringify({ title, body }),
+          );
+        } catch (err: any) {
+          // 410 Gone — подписка недействительна, удаляем
+          if (err.statusCode === 410) {
+            await this.prisma.pushSubscription.delete({
+              where: { id: sub.id },
+            });
+            this.logger.log(`Push подписка ${sub.id} удалена (410 Gone)`);
+          } else {
+            this.logger.error(`Push ошибка для ${sub.id}: ${err.message}`);
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`Push уведомления: ${err.message}`);
+    }
   }
 
   /** Возвращает количество непрочитанных уведомлений */

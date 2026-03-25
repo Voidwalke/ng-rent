@@ -4,6 +4,7 @@ import { MailerService } from '../mailer/mailer.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContractGeneratorService } from '../contracts/contract-generator.service';
+import { DocumentsService } from '../documents/documents.service';
 import type { IAccessControlProvider } from '../access-control/access-control.provider';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class QueueWorker implements OnModuleInit {
     private notifications: NotificationsService,
     private prisma: PrismaService,
     private contractGenerator: ContractGeneratorService,
+    private documentsService: DocumentsService,
     @Inject('ACCESS_CONTROL_PROVIDER')
     private accessProvider: IAccessControlProvider,
   ) {}
@@ -38,6 +40,10 @@ export class QueueWorker implements OnModuleInit {
         await this.handleAccessControl(msg);
       },
     );
+
+    await this.queue.consume(QueueService.QUEUES.EXPORT_1C, async (msg) => {
+      await this.handleExport1C(msg);
+    });
   }
 
   private async handleNotification(msg: QueueMessage) {
@@ -92,22 +98,25 @@ export class QueueWorker implements OnModuleInit {
       contract,
     });
 
-    await this.prisma.document.create({
-      data: {
-        tenantId: contract.tenantId,
-        entityType: 'contract',
-        entityId: contractId,
-        fileName: `Договор_${contract.contractNumber}.pdf`,
-        fileUrl: `documents/${contract.tenantId}/contracts/${contractId}.pdf`,
-        mimeType: 'application/pdf',
-        category: 'contract',
-        fileSize: pdfBuffer.length,
-        uploadedBy: msg.payload?.userId || 0,
-      },
-    });
+    // Загружаем PDF в MinIO через DocumentsService
+    const fakeFile = {
+      buffer: pdfBuffer,
+      originalname: `Договор_${contract.contractNumber}.pdf`,
+      size: pdfBuffer.length,
+      mimetype: 'application/pdf',
+    } as Express.Multer.File;
+
+    await this.documentsService.upload(
+      contract.tenantId,
+      msg.payload?.userId || 1,
+      fakeFile,
+      'contract',
+      contractId,
+      'contract',
+    );
 
     this.logger.log(
-      `PDF сгенерирован: договор ${contract.contractNumber}, ${pdfBuffer.length} байт`,
+      `PDF сгенерирован и загружен в S3: договор ${contract.contractNumber}, ${pdfBuffer.length} байт`,
     );
   }
 
@@ -133,5 +142,13 @@ export class QueueWorker implements OnModuleInit {
       });
       this.logger.log(`СКУД: доступ отозван ${cardNumber}, причина: ${reason}`);
     }
+  }
+
+  private async handleExport1C(msg: QueueMessage) {
+    this.logger.log(
+      `Экспорт в 1С: ${msg.type}, payload: ${JSON.stringify(msg.payload)}`,
+    );
+    // Реальная обработка выполняется в integration-1c.service через cron
+    // Очередь используется для ручных экспортов и повторных попыток
   }
 }

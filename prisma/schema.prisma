@@ -45,6 +45,7 @@ enum ApplicationStatus {
   contract_sent
   signed
   active
+  terminated
 }
 
 enum ContractStatus {

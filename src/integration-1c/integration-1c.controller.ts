@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
 import { Public, CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
 import { Integration1CService } from './integration-1c.service';
@@ -30,7 +31,14 @@ export class Integration1CController {
   private validateWebhookSecret(secret: string | undefined) {
     if (!this.webhookSecret)
       throw new UnauthorizedException('Webhook secret not configured');
-    if (secret !== this.webhookSecret) {
+    if (
+      !secret ||
+      secret.length !== this.webhookSecret.length ||
+      !crypto.timingSafeEqual(
+        Buffer.from(secret),
+        Buffer.from(this.webhookSecret),
+      )
+    ) {
       throw new UnauthorizedException('Invalid webhook secret');
     }
   }
@@ -43,7 +51,7 @@ export class Integration1CController {
     @Headers('x-webhook-secret') secret: string,
   ) {
     this.validateWebhookSecret(secret);
-    return this.service.handlePaymentWebhook(body);
+    return this.service.handlePaymentWebhook(body, body.tenantId);
   }
 
   @Public()
@@ -54,7 +62,7 @@ export class Integration1CController {
     @Headers('x-webhook-secret') secret: string,
   ) {
     this.validateWebhookSecret(secret);
-    return this.service.handleClientUpdate(body);
+    return this.service.handleClientUpdate(body, body.tenantId);
   }
 
   @Post('export')

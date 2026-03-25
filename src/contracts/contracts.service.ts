@@ -80,6 +80,9 @@ export class ContractsService {
       include: { unit: true, client: true },
     });
     if (!app) throw new NotFoundException('Заявка не найдена');
+    if (app.tenantId !== tenantId) {
+      throw new NotFoundException('Заявка не найдена');
+    }
     if (app.status !== 'approved') {
       throw new BadRequestException(
         'Договор можно создать только по одобренной заявке',
@@ -316,7 +319,7 @@ export class ContractsService {
       });
       const contractNumber = `${prefix}-${String(count + 1).padStart(4, '0')}`;
 
-      return tx.contract.create({
+      const newContract = await tx.contract.create({
         data: {
           tenantId,
           applicationId: contract.applicationId,
@@ -330,6 +333,56 @@ export class ContractsService {
           signedAt: new Date(),
         },
       });
+
+      // Первый счёт для нового контракта
+      const monthlyRent = data.newMonthlyRent ?? Number(contract.monthlyRent);
+      const vatAmount = Math.round(monthlyRent * 0.2 * 100) / 100;
+      const totalAmount = Math.round((monthlyRent + vatAmount) * 100) / 100;
+      const dueDate = new Date(contract.endDate);
+      dueDate.setDate(dueDate.getDate() + 14);
+
+      await tx.invoice.create({
+        data: {
+          tenantId,
+          contractId: newContract.id,
+          invoiceNumber: `INV-${contractNumber}-001`,
+          periodStart: contract.endDate,
+          periodEnd: new Date(
+            new Date(contract.endDate).setMonth(
+              new Date(contract.endDate).getMonth() + 1,
+            ),
+          ),
+          amount: monthlyRent,
+          vatAmount,
+          totalAmount,
+          dueDate,
+        },
+      });
+
+      // СКУД-карта для нового контракта
+      await tx.accessCard.create({
+        data: {
+          tenantId,
+          clientId: contract.clientId,
+          contractId: newContract.id,
+          cardNumber: `CARD-${crypto.randomBytes(6).toString('hex').toUpperCase()}`,
+          holderName: contract.client?.contactName,
+          activatedAt: new Date(),
+          expiresAt: new Date(data.newEndDate),
+        },
+      });
+
+      // Блокируем старые СКУД-карты
+      await tx.accessCard.updateMany({
+        where: { contractId: id, isActive: true },
+        data: {
+          isActive: false,
+          blockedReason: 'Договор продлён — выдана новая карта',
+          blockedAt: new Date(),
+        },
+      });
+
+      return newContract;
     });
   }
 
@@ -400,7 +453,7 @@ export class ContractsService {
       if (contract.applicationId) {
         await tx.application.update({
           where: { id: contract.applicationId },
-          data: { status: 'rejected' },
+          data: { status: 'terminated' },
         });
       }
 
@@ -430,6 +483,8 @@ export class ContractsService {
             amount: -Number(inv.amount),
             vatAmount: -Number(inv.vatAmount),
             totalAmount: -Number(inv.totalAmount),
+            periodStart: inv.periodStart,
+            periodEnd: inv.periodEnd,
             dueDate: new Date(Date.now() + 10 * 86400000),
             status: 'paid',
             paidAt: new Date(),

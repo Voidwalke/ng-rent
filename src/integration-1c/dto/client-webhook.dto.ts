@@ -1,4 +1,4 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ClientWebhookDto {
@@ -25,4 +25,9 @@ export class ClientWebhookDto {
   @IsOptional()
   @IsString()
   bik?: string;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsNumber()
+  tenantId?: number;
 }

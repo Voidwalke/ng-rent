@@ -131,6 +131,24 @@ export class AccessControlService {
     });
   }
 
+  /** Отзывает физический доступ для всех карт контракта */
+  async revokeCardsForContract(contractId: number) {
+    const cards = await this.prisma.accessCard.findMany({
+      where: { contractId, isActive: true },
+    });
+
+    for (const card of cards) {
+      try {
+        await this.provider.revokeAccess({
+          cardNumber: card.cardNumber,
+          reason: 'Договор завершён',
+        });
+      } catch {
+        // Логируем, но не падаем — карта уже заблокирована в БД
+      }
+    }
+  }
+
   /** Удаляет карту доступа и отзывает доступ в СКУД */
   async remove(id: number, tenantId?: number) {
     const card = await this.findOne(id, tenantId);

@@ -92,12 +92,16 @@ export class InvoicesService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const newPaidAmount =
+        (paidAmount ?? Number(invoice.totalAmount)) + alreadyPaid;
+      const isFullyPaid = newPaidAmount >= total;
+
       const updated = await tx.invoice.update({
         where: { id },
         data: {
-          status: 'paid',
-          paidAt: new Date(),
-          paidAmount: paidAmount ?? invoice.totalAmount,
+          status: isFullyPaid ? 'paid' : 'pending',
+          paidAt: isFullyPaid ? new Date() : null,
+          paidAmount: newPaidAmount,
           paymentReference,
         },
       });

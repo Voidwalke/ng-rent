@@ -24,6 +24,7 @@ export class SubscriptionsCron {
         where: {
           status: 'active',
           currentPeriodEnd: { lte: now },
+          tenant: { isActive: true },
         },
         include: { tenant: true },
       });
@@ -95,6 +96,73 @@ export class SubscriptionsCron {
         this.logger.log(`Повтор платежей: ${failed.length}`);
     } finally {
       await this.redis.releaseLock('cron:retry-payments');
+    }
+  }
+
+  /** Проверяет неоплаченные подписки и замораживает тенантов */
+  @Cron('0 8 * * *')
+  async checkUnpaidSubscriptions() {
+    if (!(await this.redis.acquireLock('cron:unpaid-subs', 3600))) return;
+    try {
+      const now = new Date();
+
+      // Неоплаченные счета подписок старше 3 дней → past_due
+      const threeDaysAgo = new Date(now.getTime() - 3 * 86400000);
+      const overdueInvoices = await this.prisma.subscriptionInvoice.findMany({
+        where: {
+          status: 'pending',
+          dueDate: { lt: threeDaysAgo },
+        },
+        include: { subscription: true },
+      });
+
+      for (const invoice of overdueInvoices) {
+        try {
+          await this.prisma.subscription.update({
+            where: { id: invoice.subscriptionId },
+            data: { status: 'past_due' },
+          });
+          this.logger.warn(
+            `Подписка ${invoice.subscriptionId} → past_due (неоплата >3 дней)`,
+          );
+        } catch (err: any) {
+          this.logger.error(`checkUnpaid: ${err.message}`);
+        }
+      }
+
+      // past_due подписки старше 7 дней → заморозка тенанта
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+      const pastDueSubs = await this.prisma.subscription.findMany({
+        where: {
+          status: 'past_due',
+          currentPeriodEnd: { lt: sevenDaysAgo },
+        },
+        include: { tenant: true },
+      });
+
+      for (const sub of pastDueSubs) {
+        try {
+          await this.prisma.$transaction(async (tx) => {
+            await tx.subscription.update({
+              where: { id: sub.id },
+              data: { status: 'canceled' },
+            });
+            await tx.tenant.update({
+              where: { id: sub.tenantId },
+              data: { isActive: false },
+            });
+          });
+          this.logger.warn(
+            `Тенант ${sub.tenantId} заморожен — неоплата подписки >7 дней`,
+          );
+        } catch (err: any) {
+          this.logger.error(
+            `Заморозка тенанта ${sub.tenantId}: ${err.message}`,
+          );
+        }
+      }
+    } finally {
+      await this.redis.releaseLock('cron:unpaid-subs');
     }
   }
 

@@ -3,9 +3,14 @@ import { NotFoundException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from './notifications.gateway';
+import { ConfigService } from '@nestjs/config';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
+
+  const mockConfig = {
+    get: jest.fn().mockReturnValue(''),
+  };
 
   const mockPrisma = {
     notification: {
@@ -32,6 +37,7 @@ describe('NotificationsService', () => {
         NotificationsService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: NotificationsGateway, useValue: mockGateway },
+        { provide: ConfigService, useValue: mockConfig },
       ],
     }).compile();
 

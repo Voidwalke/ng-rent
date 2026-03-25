@@ -7,6 +7,7 @@ import {
   Param,
   Body,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { UsersService } from './users.service';
@@ -14,6 +15,10 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
+import {
+  TariffLimitGuard,
+  CheckLimit,
+} from '../common/guards/tariff-limit.guard';
 
 @ApiTags('Пользователи')
 @ApiBearerAuth()
@@ -38,6 +43,8 @@ export class UsersController {
   }
 
   @Post()
+  @UseGuards(TariffLimitGuard)
+  @CheckLimit('users')
   @ApiOperation({ summary: 'Создать пользователя' })
   create(
     @CurrentUser('tenantId') tenantId: number,

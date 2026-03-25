@@ -5,6 +5,7 @@ import {
   CallHandler,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
+import { finalize } from 'rxjs/operators';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -20,6 +21,12 @@ export class TenantInterceptor implements NestInterceptor {
     if (user?.tenantId) {
       await this.prisma.setTenant(user.tenantId);
     }
-    return next.handle();
+    return next.handle().pipe(
+      finalize(() => {
+        if (user?.tenantId) {
+          void this.prisma.resetTenant();
+        }
+      }),
+    );
   }
 }

@@ -65,6 +65,15 @@ export class ApplicationsService {
 
   /** Создаёт заявку на аренду */
   async create(tenantId: number, dto: CreateApplicationDto) {
+    if (new Date(dto.desiredEnd) <= new Date(dto.desiredStart)) {
+      throw new BadRequestException(
+        'Дата окончания должна быть позже даты начала',
+      );
+    }
+    if (new Date(dto.desiredStart) < new Date(new Date().toDateString())) {
+      throw new BadRequestException('Дата начала не может быть в прошлом');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const unit = await tx.unit.findUnique({
         where: { id: dto.unitId },
