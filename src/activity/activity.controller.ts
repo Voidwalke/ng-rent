@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ActivityService } from './activity.service';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
+import { ActivityQueryDto } from './dto/activity-query.dto';
 
 @ApiTags('Лента событий')
 @ApiBearerAuth()
@@ -13,15 +14,11 @@ export class ActivityController {
   @Get()
   @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Лента последних событий организации' })
-  getFeed(
-    @CurrentUser() user: any,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
+  getFeed(@CurrentUser() user: any, @Query() query: ActivityQueryDto) {
     return this.activityService.getFeed(
       user.tenantId,
-      page ? +page : 1,
-      limit ? +limit : 30,
+      query.page ? +query.page : 1,
+      query.limit ? +query.limit : 30,
     );
   }
 

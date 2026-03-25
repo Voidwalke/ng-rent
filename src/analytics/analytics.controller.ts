@@ -10,6 +10,7 @@ import type { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
+import { AnalyticsMonthsQueryDto } from './dto/analytics-query.dto';
 
 @ApiTags('Аналитика')
 @ApiBearerAuth()
@@ -29,9 +30,12 @@ export class AnalyticsController {
   @ApiQuery({ name: 'months', required: false, example: 6 })
   getRevenue(
     @CurrentUser('tenantId') tenantId: number,
-    @Query('months') months?: string,
+    @Query() query: AnalyticsMonthsQueryDto,
   ) {
-    return this.analyticsService.getRevenue(tenantId, months ? +months : 6);
+    return this.analyticsService.getRevenue(
+      tenantId,
+      query.months ? +query.months : 6,
+    );
   }
 
   @Get('aged-debt')
@@ -51,9 +55,12 @@ export class AnalyticsController {
   @ApiQuery({ name: 'months', required: false, example: 6 })
   getCashflow(
     @CurrentUser('tenantId') tenantId: number,
-    @Query('months') months?: string,
+    @Query() query: AnalyticsMonthsQueryDto,
   ) {
-    return this.analyticsService.getCashflow(tenantId, months ? +months : 6);
+    return this.analyticsService.getCashflow(
+      tenantId,
+      query.months ? +query.months : 6,
+    );
   }
 
   @Get('vacancy-cost')

@@ -2,9 +2,16 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantPlan } from '@prisma/client';
+import {
+  PaymentProvider,
+  YookassaProvider,
+  MockYookassaProvider,
+} from '../payments/yookassa.provider';
 
 const PLAN_PRICES: Record<string, number> = {
   free: 0,
@@ -25,7 +32,18 @@ const PLAN_LIMITS: Record<
 
 @Injectable()
 export class SubscriptionsService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(SubscriptionsService.name);
+  private readonly paymentProvider: PaymentProvider;
+
+  constructor(
+    private prisma: PrismaService,
+    private config: ConfigService,
+  ) {
+    const shopId = this.config.get<string>('YOOKASSA_SHOP_ID');
+    this.paymentProvider = shopId
+      ? new YookassaProvider(config)
+      : new MockYookassaProvider();
+  }
 
   /** Возвращает текущую подписку тенанта */
   async getCurrent(tenantId: number) {
@@ -188,5 +206,98 @@ export class SubscriptionsService {
       where: { subscription: { tenantId } },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /** Создаёт платёж для оплаты подписки (первый месяц или текущий счёт) */
+  async payInvoice(tenantId: number, invoiceId?: number) {
+    // Находим неоплаченный счёт подписки
+    const where: any = {
+      tenantId,
+      status: 'pending',
+    };
+    if (invoiceId) where.id = invoiceId;
+
+    const invoice = await this.prisma.subscriptionInvoice.findFirst({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: { subscription: true },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('Неоплаченный счёт подписки не найден');
+    }
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: { users: { where: { role: 'admin' }, take: 1 } },
+    });
+
+    const adminEmail = tenant?.users?.[0]?.email || '';
+    const amount = Number(invoice.amount);
+
+    const result = await this.paymentProvider.createPayment(
+      amount,
+      'RUB',
+      `Оплата подписки (${invoice.subscription.plan}) — период ${invoice.periodStart.toLocaleDateString('ru-RU')}–${invoice.periodEnd.toLocaleDateString('ru-RU')}`,
+      {
+        type: 'subscription',
+        subscriptionInvoiceId: invoice.id,
+        subscriptionId: invoice.subscriptionId,
+        tenantId,
+        email: adminEmail,
+      },
+    );
+
+    this.logger.log(
+      `Платёж подписки создан: tenant=${tenantId}, invoice=${invoice.id}, externalId=${result.id}`,
+    );
+
+    return {
+      invoiceId: invoice.id,
+      amount,
+      confirmationUrl: result.confirmationUrl,
+      externalPaymentId: result.id,
+    };
+  }
+
+  /** Обрабатывает успешную оплату подписки (вызывается из вебхука платежей) */
+  async handlePaymentSuccess(subscriptionInvoiceId: number) {
+    const invoice = await this.prisma.subscriptionInvoice.findUnique({
+      where: { id: subscriptionInvoiceId },
+      include: { subscription: true },
+    });
+
+    if (!invoice || invoice.status === 'paid') return;
+
+    await this.prisma.$transaction(async (tx: any) => {
+      await tx.subscriptionInvoice.update({
+        where: { id: invoice.id },
+        data: { status: 'paid', paidAt: new Date() },
+      });
+
+      // Если подписка в trialing — активируем
+      if (invoice.subscription.status === 'trialing') {
+        await tx.subscription.update({
+          where: { id: invoice.subscriptionId },
+          data: { status: 'active' },
+        });
+      }
+
+      // Если подписка past_due — восстанавливаем
+      if (invoice.subscription.status === 'past_due') {
+        await tx.subscription.update({
+          where: { id: invoice.subscriptionId },
+          data: { status: 'active' },
+        });
+        await tx.tenant.update({
+          where: { id: invoice.tenantId },
+          data: { isActive: true },
+        });
+      }
+    });
+
+    this.logger.log(
+      `Подписка ${invoice.subscriptionId} оплачена и активирована`,
+    );
   }
 }

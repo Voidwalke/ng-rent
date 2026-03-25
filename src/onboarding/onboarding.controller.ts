@@ -2,6 +2,7 @@ import { Controller, Get, Patch, Body } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { OnboardingService } from './onboarding.service';
 import { CurrentUser } from '../common/decorators';
+import { CompleteStepDto } from './dto/complete-step.dto';
 
 @ApiTags('Онбординг')
 @ApiBearerAuth()
@@ -17,8 +18,8 @@ export class OnboardingController {
 
   @Patch('complete-step')
   @ApiOperation({ summary: 'Отметить шаг как пройденный' })
-  completeStep(@CurrentUser() user: any, @Body('step') step: string) {
-    return this.onboardingService.completeStep(user.tenantId, step);
+  completeStep(@CurrentUser() user: any, @Body() dto: CompleteStepDto) {
+    return this.onboardingService.completeStep(user.tenantId, dto.step);
   }
 
   @Patch('skip')

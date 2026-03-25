@@ -5,6 +5,7 @@ import {
   IsOptional,
   Matches,
   IsBoolean,
+  IsIn,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -47,4 +48,14 @@ export class RegisterDto {
   })
   @IsBoolean()
   acceptTerms: boolean;
+
+  @ApiProperty({
+    example: 'basic',
+    description: 'Тарифный план (free, basic, pro, enterprise)',
+    required: false,
+    default: 'free',
+  })
+  @IsOptional()
+  @IsIn(['free', 'basic', 'pro', 'enterprise'])
+  plan?: string;
 }

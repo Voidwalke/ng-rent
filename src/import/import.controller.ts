@@ -20,6 +20,7 @@ import {
 import { ImportService } from './import.service';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
+import { ImportTemplateQueryDto } from './dto/import-template-query.dto';
 
 @ApiTags('Импорт данных')
 @ApiBearerAuth()
@@ -30,8 +31,8 @@ export class ImportController {
 
   @Get('template')
   @ApiOperation({ summary: 'Скачать шаблон для импорта' })
-  getTemplate(@Query('type') type: string) {
-    return this.importService.getTemplate(type);
+  getTemplate(@Query() query: ImportTemplateQueryDto) {
+    return this.importService.getTemplate(query.type);
   }
 
   @Get('jobs')

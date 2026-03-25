@@ -75,9 +75,23 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
+    const chosenPlan = dto.plan || 'free';
+    const planPrices: Record<string, number> = {
+      free: 0,
+      basic: 5000,
+      pro: 15000,
+      enterprise: 45000,
+    };
+    const price = planPrices[chosenPlan] || 0;
+
     const result = await this.prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
-        data: { name: dto.companyName, slug: dto.slug, inn: dto.inn },
+        data: {
+          name: dto.companyName,
+          slug: dto.slug,
+          inn: dto.inn,
+          plan: chosenPlan as any,
+        },
       });
 
       const user = await tx.user.create({
@@ -95,20 +109,42 @@ export class AuthService {
       const now = new Date();
       const trialEnd = new Date(now);
       trialEnd.setDate(trialEnd.getDate() + 14);
+      const periodEnd = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        Math.min(now.getDate(), 28),
+      );
 
-      await tx.subscription.create({
+      const subscription = await tx.subscription.create({
         data: {
           tenantId: tenant.id,
-          plan: 'free',
-          priceMonthly: 0,
+          plan: chosenPlan as any,
+          priceMonthly: price,
           status: 'trialing',
           currentPeriodStart: now,
-          currentPeriodEnd: trialEnd,
+          currentPeriodEnd: chosenPlan === 'free' ? trialEnd : periodEnd,
           trialEndsAt: trialEnd,
         },
       });
 
-      return { tenant, user };
+      // Для платных планов создаём счёт на первый месяц
+      let subscriptionInvoice = null;
+      if (price > 0) {
+        const dueDate = new Date(trialEnd);
+        subscriptionInvoice = await tx.subscriptionInvoice.create({
+          data: {
+            tenantId: tenant.id,
+            subscriptionId: subscription.id,
+            amount: price,
+            periodStart: now,
+            periodEnd,
+            dueDate,
+            status: 'pending',
+          },
+        });
+      }
+
+      return { tenant, user, subscription, subscriptionInvoice };
     });
 
     await this.sendVerificationEmail(result.user.id, result.user.email);
@@ -120,7 +156,7 @@ export class AuthService {
     });
     await this.saveSession(result.user.id, tokens.refreshToken, 'registration');
 
-    return {
+    const response: any = {
       ...tokens,
       user: {
         id: result.user.id,
@@ -128,7 +164,24 @@ export class AuthService {
         role: result.user.role,
         fullName: result.user.fullName,
       },
+      subscription: {
+        id: result.subscription.id,
+        plan: chosenPlan,
+        status: result.subscription.status,
+        trialEndsAt: result.subscription.trialEndsAt,
+      },
     };
+
+    if (result.subscriptionInvoice) {
+      response.subscriptionInvoice = {
+        id: result.subscriptionInvoice.id,
+        amount: result.subscriptionInvoice.amount,
+        dueDate: result.subscriptionInvoice.dueDate,
+        status: result.subscriptionInvoice.status,
+      };
+    }
+
+    return response;
   }
 
   /** Аутентифицирует пользователя по email и паролю */
@@ -235,7 +288,13 @@ export class AuthService {
       .update(dto.code)
       .digest('hex');
 
-    if (!otpHash || otpHash !== inputHash) {
+    if (
+      !otpHash ||
+      !crypto.timingSafeEqual(
+        Buffer.from(otpHash, 'hex'),
+        Buffer.from(inputHash, 'hex'),
+      )
+    ) {
       await this.redis.set(attemptsKey, attempts + 1, OTP_TTL);
       throw new BadRequestException('Неверный код');
     }
@@ -300,7 +359,13 @@ export class AuthService {
   async disable2fa(userId: number, code: string) {
     const otpHash = await this.redis.get<string>(`otp:${userId}`);
     const inputHash = crypto.createHash('sha256').update(code).digest('hex');
-    if (!otpHash || otpHash !== inputHash) {
+    if (
+      !otpHash ||
+      !crypto.timingSafeEqual(
+        Buffer.from(otpHash, 'hex'),
+        Buffer.from(inputHash, 'hex'),
+      )
+    ) {
       throw new BadRequestException('Неверный код');
     }
     await this.redis.del(`otp:${userId}`);

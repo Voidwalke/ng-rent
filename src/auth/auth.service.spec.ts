@@ -19,7 +19,15 @@ describe('AuthService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
-    subscription: { create: jest.fn() },
+    subscription: {
+      create: jest.fn().mockResolvedValue({
+        id: 1,
+        plan: 'free',
+        status: 'trialing',
+        trialEndsAt: new Date(),
+      }),
+    },
+    subscriptionInvoice: { create: jest.fn().mockResolvedValue({ id: 1 }) },
     $transaction: jest.fn((fn) => fn(mockPrisma)),
   };
 

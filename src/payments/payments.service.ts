@@ -95,19 +95,34 @@ export class PaymentsService {
     const paymentData = body.object;
 
     // H9: Дедупликация вебхуков
-    const processed = await this.prisma.payment.findFirst({
-      where: {
-        externalId: paymentData.id,
-        status: event === 'payment.succeeded' ? 'succeeded' : undefined,
-      },
-    });
+    const statusMap: Record<string, string> = {
+      'payment.succeeded': 'succeeded',
+      'payment.canceled': 'canceled',
+      'refund.succeeded': 'refunded',
+    };
+    const expectedStatus = statusMap[event];
+    if (expectedStatus) {
+      const processed = await this.prisma.payment.findFirst({
+        where: {
+          externalId: paymentData.id,
+          status: expectedStatus,
+        },
+      });
+      if (processed) {
+        return { status: 'already_processed' };
+      }
+    }
+
+    // Обработка платежей по подписке (metadata.type === 'subscription')
     if (
-      processed &&
-      ((event === 'payment.succeeded' && processed.status === 'succeeded') ||
-        (event === 'payment.canceled' && processed.status === 'canceled') ||
-        (event === 'refund.succeeded' && processed.status === 'refunded'))
+      event === 'payment.succeeded' &&
+      paymentData.metadata?.type === 'subscription'
     ) {
-      return { status: 'already_processed' };
+      const subInvoiceId = paymentData.metadata.subscriptionInvoiceId;
+      if (subInvoiceId) {
+        await this.handleSubscriptionPayment(Number(subInvoiceId));
+        return { status: 'ok', type: 'subscription' };
+      }
     }
 
     const payment = await this.prisma.payment.findFirst({
@@ -155,37 +170,44 @@ export class PaymentsService {
     }
 
     if (event === 'payment.canceled') {
-      await this.prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: 'canceled',
-          webhookData: paymentData,
-          completedAt: new Date(),
-        },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: 'canceled',
+            webhookData: paymentData,
+            completedAt: new Date(),
+          },
+        });
       });
     }
 
     if (event === 'refund.succeeded') {
-      await this.prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 'refunded', webhookData: paymentData },
-      });
-
-      const invoice = await this.prisma.invoice.findUnique({
-        where: { id: payment.invoiceId },
-      });
-      if (invoice) {
-        const refundAmount = Number(
-          paymentData.amount?.value || payment.amount,
-        );
-        await this.prisma.invoice.update({
-          where: { id: invoice.id },
-          data: {
-            paidAmount: Math.max(0, Number(invoice.paidAmount) - refundAmount),
-            status: 'cancelled',
-          },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: 'refunded', webhookData: paymentData },
         });
-      }
+
+        const invoice = await tx.invoice.findUnique({
+          where: { id: payment.invoiceId },
+        });
+        if (invoice) {
+          const refundAmount = Number(
+            paymentData.amount?.value || payment.amount,
+          );
+          await tx.invoice.update({
+            where: { id: invoice.id },
+            data: {
+              paidAmount: Math.max(
+                0,
+                Number(invoice.paidAmount) - refundAmount,
+              ),
+              status: 'cancelled',
+            },
+          });
+        }
+      });
     }
 
     return { status: 'ok' };
@@ -256,5 +278,40 @@ export class PaymentsService {
     ]);
 
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  /** Обрабатывает успешную оплату подписки */
+  private async handleSubscriptionPayment(subscriptionInvoiceId: number) {
+    const invoice = await this.prisma.subscriptionInvoice.findUnique({
+      where: { id: subscriptionInvoiceId },
+      include: { subscription: true },
+    });
+
+    if (!invoice || invoice.status === 'paid') return;
+
+    await this.prisma.$transaction(async (tx: any) => {
+      await tx.subscriptionInvoice.update({
+        where: { id: invoice.id },
+        data: { status: 'paid', paidAt: new Date() },
+      });
+
+      if (['trialing', 'past_due'].includes(invoice.subscription.status)) {
+        await tx.subscription.update({
+          where: { id: invoice.subscriptionId },
+          data: { status: 'active' },
+        });
+      }
+
+      if (invoice.subscription.status === 'past_due') {
+        await tx.tenant.update({
+          where: { id: invoice.tenantId },
+          data: { isActive: true },
+        });
+      }
+    });
+
+    this.logger.log(
+      `Подписка ${invoice.subscriptionId} оплачена (invoice=${subscriptionInvoiceId})`,
+    );
   }
 }

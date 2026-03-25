@@ -22,6 +22,8 @@ import {
 import { DocumentsService } from './documents.service';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
+import { DocumentsQueryDto } from './dto/documents-query.dto';
+import { DocumentUploadDto } from './dto/document-upload.dto';
 
 @ApiTags('Документы')
 @ApiBearerAuth()
@@ -49,43 +51,25 @@ export class DocumentsController {
   upload(
     @CurrentUser() user: any,
     @UploadedFile() file: Express.Multer.File,
-    @Body('entityType') entityType: string,
-    @Body('entityId', ParseIntPipe) entityId: number,
-    @Body('category') category?: string,
+    @Body() dto: DocumentUploadDto,
   ) {
     if (!file) {
       throw new BadRequestException('Файл обязателен');
-    }
-    const allowedEntityTypes = [
-      'contract',
-      'property',
-      'unit',
-      'client',
-      'application',
-    ];
-    if (!entityType || !allowedEntityTypes.includes(entityType)) {
-      throw new BadRequestException(
-        `entityType должен быть одним из: ${allowedEntityTypes.join(', ')}`,
-      );
     }
     return this.documentsService.upload(
       user.tenantId,
       user.id,
       file,
-      entityType,
-      entityId,
-      category,
+      dto.entityType,
+      dto.entityId,
+      dto.category,
     );
   }
 
   @Get()
   @ApiOperation({ summary: 'Список документов' })
-  findAll(
-    @CurrentUser() user: any,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('category') category?: string,
-  ) {
+  findAll(@CurrentUser() user: any, @Query() query: DocumentsQueryDto) {
+    const { page, limit, category } = query;
     return this.documentsService.findAll(
       user.tenantId,
       page ? +page : 1,

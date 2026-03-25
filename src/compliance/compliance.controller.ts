@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ComplianceService } from './compliance.service';
 import { CurrentUser } from '../common/decorators';
+import { RecordConsentDto } from './dto/record-consent.dto';
 
 @ApiTags('152-ФЗ / Персональные данные')
 @ApiBearerAuth()
@@ -13,10 +14,10 @@ export class ComplianceController {
   @ApiOperation({ summary: 'Дать согласие на обработку ПД' })
   recordConsent(
     @CurrentUser() user: any,
-    @Body('type') type: string,
+    @Body() dto: RecordConsentDto,
     @Req() req: any,
   ) {
-    return this.complianceService.recordConsent(user.id, type, req.ip);
+    return this.complianceService.recordConsent(user.id, dto.type, req.ip);
   }
 
   @Get('consents')
