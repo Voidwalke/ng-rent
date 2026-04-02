@@ -5,6 +5,7 @@ import {
   Param,
   Query,
   Body,
+  Res,
   UseInterceptors,
   UploadedFile,
   ParseIntPipe,
@@ -16,11 +17,13 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiConsumes,
+  ApiProduces,
 } from '@nestjs/swagger';
 import { ImportService } from './import.service';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
 import { ImportTemplateQueryDto } from './dto/import-template-query.dto';
+import type { Response } from 'express';
 
 @ApiTags('Импорт данных')
 @ApiBearerAuth()
@@ -31,8 +34,16 @@ export class ImportController {
 
   @Get('template')
   @ApiOperation({ summary: 'Скачать шаблон для импорта' })
-  getTemplate(@Query() query: ImportTemplateQueryDto) {
-    return this.importService.getTemplate(query.type);
+  @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  getTemplate(@Query() query: ImportTemplateQueryDto, @Res() res: Response) {
+    const { fileName, buffer } = this.importService.getTemplate(query.type);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${fileName}"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
   }
 
   @Get('jobs')

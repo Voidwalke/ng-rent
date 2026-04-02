@@ -1,4 +1,11 @@
-import { IsString, IsEnum, IsNumber, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsInt,
+  Min,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { PropertyType } from '@prisma/client';
 
@@ -26,4 +33,26 @@ export class CreatePropertyDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiProperty({ example: 'Москва', required: false })
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @ApiProperty({ example: 12, required: false })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  floorsCount?: number;
+
+  @ApiProperty({ example: 2005, required: false })
+  @IsOptional()
+  @IsInt()
+  @Min(1900)
+  yearBuilt?: number;
+
+  @ApiProperty({ example: 'https://example.com/photo.jpg', required: false })
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
 }

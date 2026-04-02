@@ -40,4 +40,13 @@ export class TenantsService {
       data: { isActive: false },
     });
   }
+
+  /** Переключает активность организации */
+  async toggle(id: number) {
+    const tenant = await this.findOne(id);
+    return this.prisma.tenant.update({
+      where: { id },
+      data: { isActive: !tenant.isActive },
+    });
+  }
 }

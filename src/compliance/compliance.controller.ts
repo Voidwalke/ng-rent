@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Req } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Req, Param, ParseIntPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ComplianceService } from './compliance.service';
 import { CurrentUser } from '../common/decorators';
@@ -21,9 +21,18 @@ export class ComplianceController {
   }
 
   @Get('consents')
-  @ApiOperation({ summary: 'Список согласий' })
+  @ApiOperation({ summary: 'Список активных согласий' })
   getConsents(@CurrentUser() user: any) {
     return this.complianceService.getUserConsents(user.id);
+  }
+
+  @Delete('consent/:id')
+  @ApiOperation({ summary: 'Отозвать согласие на обработку ПД' })
+  revokeConsent(
+    @CurrentUser() user: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.complianceService.revokeConsent(user.id, id);
   }
 
   @Post('data-export')

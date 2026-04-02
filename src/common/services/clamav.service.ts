@@ -85,7 +85,7 @@ export class ClamavService {
         // Команда zINSTREAM (null-terminated)
         socket.write('zINSTREAM\0');
 
-        // Отправляем данные чанками
+        // Отправка данных чанками
         for (let offset = 0; offset < buffer.length; offset += this.chunkSize) {
           const end = Math.min(offset + this.chunkSize, buffer.length);
           const chunk = buffer.subarray(offset, end);

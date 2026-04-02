@@ -50,7 +50,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       // Prefetch — не больше 10 необработанных сообщений на consumer
       await this.channel.prefetch(10);
 
-      // Создаём основные очереди + DLQ для каждой
+      // Основные очереди + DLQ для каждой
       for (const queue of Object.values(QueueService.QUEUES)) {
         // Dead Letter Queue
         await this.channel.assertQueue(`${queue}.dlq`, { durable: true });
@@ -80,7 +80,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       this.reconnectAttempts = 0;
       this.logger.log('RabbitMQ подключён, очереди созданы');
 
-      // Восстанавливаем consumers после реконнекта
+      // Восстановление consumers после реконнекта
       for (const { queue, handler } of this.consumers) {
         await this.setupConsumer(queue, handler);
       }
@@ -118,7 +118,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
   /** Подписывается на очередь для обработки сообщений */
   async consume(queue: string, handler: (msg: QueueMessage) => Promise<void>) {
-    // Сохраняем для восстановления после реконнекта
+    // Сохранение для восстановления после реконнекта
     this.consumers.push({ queue, handler });
 
     if (!this.channel) {

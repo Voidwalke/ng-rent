@@ -136,7 +136,7 @@ export class NotificationsService {
 
     return this.prisma.notification.update({
       where: { id },
-      data: { readAt: new Date() },
+      data: { readAt: new Date(), isRead: true },
     });
   }
 
@@ -144,7 +144,7 @@ export class NotificationsService {
   async markAllRead(userId: number) {
     await this.prisma.notification.updateMany({
       where: { userId, readAt: null },
-      data: { readAt: new Date() },
+      data: { readAt: new Date(), isRead: true },
     });
     return { message: 'Все уведомления прочитаны' };
   }

@@ -58,6 +58,15 @@ export class AccessControlController {
     return this.accessControlService.findOne(id, tenantId);
   }
 
+  @Get(':id/qr')
+  @ApiOperation({ summary: 'Получить QR-код карты доступа' })
+  getQr(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.accessControlService.getQrData(id, tenantId);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Выдать карту доступа' })
   create(

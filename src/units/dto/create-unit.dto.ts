@@ -40,4 +40,9 @@ export class CreateUnitDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiProperty({ example: 'A-301', required: false })
+  @IsOptional()
+  @IsString()
+  unitNumber?: string;
 }

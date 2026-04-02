@@ -51,4 +51,10 @@ export class TenantsController {
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.tenantsService.remove(id);
   }
+
+  @Patch(':id/toggle')
+  @ApiOperation({ summary: 'Переключить активность организации' })
+  toggle(@Param('id', ParseIntPipe) id: number) {
+    return this.tenantsService.toggle(id);
+  }
 }

@@ -9,13 +9,19 @@ import {
   Query,
   ParseIntPipe,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiQuery,
+  ApiConsumes,
+  ApiBody,
 } from '@nestjs/swagger';
 import { PropertiesService } from './properties.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
@@ -118,6 +124,95 @@ export class PropertiesController {
     @CurrentUser('tenantId') tenantId: number,
   ) {
     return this.propertiesService.unpublish(id, tenantId);
+  }
+
+  @Post(':id/image')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Загрузить фото объекта' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  uploadImage(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Файл обязателен');
+    }
+    return this.propertiesService.uploadImage(id, user.tenantId, file);
+  }
+
+  @Get(':id/images')
+  @ApiOperation({ summary: 'Получить все изображения галереи объекта' })
+  @ApiResponse({ status: 200, description: 'Список изображений' })
+  getImages(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.propertiesService.getImages(id, tenantId);
+  }
+
+  @Post(':id/images')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Добавить изображение в галерею объекта' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        caption: { type: 'string' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  addImage(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('caption') caption?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Файл обязателен');
+    }
+    return this.propertiesService.addImage(id, user.tenantId, file, caption);
+  }
+
+  @Patch(':id/images/:imageId/reorder')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Изменить порядок изображения в галерее' })
+  @ApiResponse({ status: 200, description: 'Порядок изменён' })
+  reorderImage(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('imageId', ParseIntPipe) imageId: number,
+    @Body('direction') direction: 'up' | 'down',
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.propertiesService.reorderImage(id, imageId, direction, tenantId);
+  }
+
+  @Delete(':id/images/:imageId')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Удалить изображение из галереи' })
+  @ApiResponse({ status: 200, description: 'Изображение удалено' })
+  deleteImage(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('imageId', ParseIntPipe) imageId: number,
+    @CurrentUser('tenantId') tenantId: number,
+  ) {
+    return this.propertiesService.deleteImage(id, imageId, tenantId);
   }
 
   @Delete(':id')

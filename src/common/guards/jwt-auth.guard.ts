@@ -29,7 +29,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const result = await (super.canActivate(ctx) as Promise<boolean>);
     if (!result) return false;
 
-    // Проверяем, что тенант активен
+    // Проверка, что тенант активен
     const request = ctx.switchToHttp().getRequest();
     const user = request.user;
     if (user?.tenantId) {

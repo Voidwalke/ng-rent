@@ -5,9 +5,13 @@ import {
   Param,
   Query,
   Body,
+  Headers,
   ParseIntPipe,
+  ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { PaymentsService } from './payments.service';
 import { YookassaWebhookDto } from './dto/yookassa-webhook.dto';
 import { RefundDto } from './dto/refund.dto';
@@ -17,7 +21,20 @@ import { UserRole } from '@prisma/client';
 @ApiTags('Платежи')
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly paymentsService: PaymentsService) {}
+  private readonly logger = new Logger(PaymentsController.name);
+  private readonly webhookSecret: string;
+
+  constructor(
+    private readonly paymentsService: PaymentsService,
+    private readonly configService: ConfigService,
+  ) {
+    this.webhookSecret = this.configService.get('YOOKASSA_WEBHOOK_SECRET', '');
+    if (!this.webhookSecret) {
+      this.logger.warn(
+        'YOOKASSA_WEBHOOK_SECRET не задан — вебхуки принимаются без проверки',
+      );
+    }
+  }
 
   @Post('invoice/:invoiceId')
   @ApiBearerAuth()
@@ -45,7 +62,13 @@ export class PaymentsController {
   @Post('webhook/yookassa')
   @Public()
   @ApiOperation({ summary: 'Вебхук ЮKassa' })
-  handleWebhook(@Body() body: YookassaWebhookDto) {
+  handleWebhook(
+    @Body() body: YookassaWebhookDto,
+    @Headers('x-webhook-secret') secret?: string,
+  ) {
+    if (this.webhookSecret && secret !== this.webhookSecret) {
+      throw new ForbiddenException('Invalid webhook secret');
+    }
     return this.paymentsService.handleWebhook(body);
   }
 

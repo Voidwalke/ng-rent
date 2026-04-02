@@ -70,7 +70,8 @@ export class CatalogController {
           where: { status: 'available', deletedAt: null },
           orderBy: { priceMonth: 'asc' },
         },
-        tenant: { select: { name: true } },
+        images: { orderBy: { sortOrder: 'asc' } },
+        tenant: { select: { name: true, contactEmail: true, contactPhone: true } },
       },
     });
     if (!property) throw new NotFoundException('Объект не найден');

@@ -95,7 +95,7 @@ export class QueueWorker implements OnModuleInit {
       where: { id: tenantId || contract.tenantId },
     });
 
-    // Генерируем PDF через ContractGeneratorService
+    // Генерация PDF через ContractGeneratorService
     const pdfBuffer = await this.contractGenerator.generatePdf({
       tenant: tenant || {},
       client: contract.client || {},
@@ -104,7 +104,7 @@ export class QueueWorker implements OnModuleInit {
       contract,
     });
 
-    // Загружаем PDF в MinIO через DocumentsService
+    // Загрузка PDF в MinIO через DocumentsService
     const fakeFile = {
       buffer: pdfBuffer,
       originalname: `Договор_${contract.contractNumber}.pdf`,

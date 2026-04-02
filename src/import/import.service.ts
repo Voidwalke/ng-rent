@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import * as XLSX from 'xlsx';
 
 /** Парсит CSV-строку с учётом кавычек */
 function parseCsvLine(line: string): string[] {
@@ -45,20 +46,50 @@ function parseCsv(content: string): { headers: string[]; rows: string[][] } {
   return { headers, rows };
 }
 
+/** Результат парсинга файла (CSV или XLSX) */
+interface ParsedFile {
+  headers: string[];
+  rows: string[][];
+}
+
+/** Парсит XLSX/XLS-буфер: берёт первый лист и возвращает заголовки + строки */
+function parseXlsx(buffer: Buffer): ParsedFile {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) return { headers: [], rows: [] };
+
+  const sheet = workbook.Sheets[sheetName];
+  const jsonRows: string[][] = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: '',
+    raw: false,
+  });
+
+  if (jsonRows.length === 0) return { headers: [], rows: [] };
+
+  const headers = jsonRows[0].map((h: unknown) => String(h ?? '').trim());
+  const rows = jsonRows
+    .slice(1)
+    .filter((r) => r.some((cell: unknown) => String(cell ?? '').trim() !== ''))
+    .map((r) => r.map((cell: unknown) => String(cell ?? '').trim()));
+
+  return { headers, rows };
+}
+
 @Injectable()
 export class ImportService {
   private readonly logger = new Logger(ImportService.name);
 
-  /** Временное хранилище CSV-данных между createJob и confirmImport */
-  private pendingFiles = new Map<number, string>();
+  /** Временное хранилище разобранных данных между createJob и confirmImport */
+  private pendingFiles = new Map<number, ParsedFile>();
   /** TTL для pendingFiles — 30 минут */
   private readonly PENDING_TTL = 30 * 60 * 1000;
 
   constructor(private prisma: PrismaService) {}
 
-  /** Сохраняет файл с автоочисткой по таймауту */
-  private setPendingFile(jobId: number, content: string) {
-    this.pendingFiles.set(jobId, content);
+  /** Сохраняет разобранный файл с автоочисткой по таймауту */
+  private setPendingFile(jobId: number, data: ParsedFile) {
+    this.pendingFiles.set(jobId, data);
     setTimeout(() => {
       if (this.pendingFiles.has(jobId)) {
         this.pendingFiles.delete(jobId);
@@ -79,8 +110,20 @@ export class ImportService {
       throw new BadRequestException(`Неподдерживаемый тип импорта: ${type}`);
     }
 
-    const fileContent = file.buffer?.toString('utf-8') || '';
-    const { headers, rows } = parseCsv(fileContent);
+    const ext = (file.originalname || '').split('.').pop()?.toLowerCase();
+    let headers: string[];
+    let rows: string[][];
+
+    if (ext === 'xlsx' || ext === 'xls') {
+      const parsed = parseXlsx(file.buffer);
+      headers = parsed.headers;
+      rows = parsed.rows;
+    } else {
+      const fileContent = file.buffer?.toString('utf-8') || '';
+      const parsed = parseCsv(fileContent);
+      headers = parsed.headers;
+      rows = parsed.rows;
+    }
 
     if (rows.length === 0) {
       throw new BadRequestException('Файл пуст или не содержит данных');
@@ -99,13 +142,77 @@ export class ImportService {
       },
     });
 
-    // Сохраняем содержимое для последующего импорта
-    this.setPendingFile(job.id, fileContent);
+    // Сохранение разобранных данных для последующего импорта
+    this.setPendingFile(job.id, { headers, rows });
+
+    // Предварительная валидация строк
+    const rowErrors = this.validateRows(type, rows);
+    const errorCount = rowErrors.filter((e) => e !== null).length;
 
     this.logger.log(
-      `Импорт ${type}: загружен файл, ${rows.length} строк, заголовки: ${headers.join(', ')}`,
+      `Импорт ${type}: загружен файл, ${rows.length} строк (${errorCount} с ошибками), заголовки: ${headers.join(', ')}`,
     );
-    return { ...job, preview: { headers, sampleRows: rows.slice(0, 5) } };
+    return {
+      ...job,
+      preview: {
+        headers,
+        rows: rows.slice(0, 50),
+        rowErrors: rowErrors.slice(0, 50),
+        totalRows: rows.length,
+        errorCount,
+      },
+    };
+  }
+
+  /** Валидирует строки и возвращает массив ошибок (null = ок) */
+  private validateRows(
+    type: string,
+    rows: string[][],
+  ): (string | null)[] {
+    return rows.map((row) => {
+      try {
+        if (type === 'units') {
+          const [propertyName, , floor, areaSqm, priceMonth] = row;
+          const missing: string[] = [];
+          if (!propertyName) missing.push('Объект');
+          if (!floor) missing.push('Этаж');
+          if (!areaSqm) missing.push('Площадь');
+          if (!priceMonth) missing.push('Цена');
+          if (missing.length > 0)
+            return `Не заполнены обязательные поля: ${missing.join(', ')}`;
+          if (isNaN(parseInt(floor, 10))) return 'Этаж должен быть числом';
+          if (isNaN(parseFloat(areaSqm))) return 'Площадь должна быть числом';
+          if (isNaN(parseFloat(priceMonth)))
+            return 'Цена должна быть числом';
+        } else if (type === 'clients') {
+          const [companyName, , , contactName, contactEmail] = row;
+          const missing: string[] = [];
+          if (!companyName) missing.push('Компания');
+          if (!contactName) missing.push('Контакт');
+          if (!contactEmail) missing.push('Email');
+          if (missing.length > 0)
+            return `Не заполнены обязательные поля: ${missing.join(', ')}`;
+          if (contactEmail && !contactEmail.includes('@'))
+            return 'Некорректный email';
+        } else if (type === 'contracts') {
+          const [contractNumber, clientInn, , startDate, endDate, monthlyRent] =
+            row;
+          const missing: string[] = [];
+          if (!contractNumber) missing.push('Номер договора');
+          if (!clientInn) missing.push('Компания (ИНН)');
+          if (!startDate) missing.push('Дата начала');
+          if (!endDate) missing.push('Дата окончания');
+          if (!monthlyRent) missing.push('Ставка');
+          if (missing.length > 0)
+            return `Не заполнены обязательные поля: ${missing.join(', ')}`;
+          if (isNaN(parseFloat(monthlyRent)))
+            return 'Ставка должна быть числом';
+        }
+        return null;
+      } catch {
+        return 'Ошибка валидации строки';
+      }
+    });
   }
 
   /** Подтверждает и выполняет импорт */
@@ -115,8 +222,8 @@ export class ImportService {
     });
     if (!job) throw new NotFoundException('Задача импорта не найдена');
 
-    const fileContent = this.pendingFiles.get(importId);
-    if (!fileContent) {
+    const parsedData = this.pendingFiles.get(importId);
+    if (!parsedData) {
       throw new BadRequestException(
         'Данные файла не найдены, загрузите файл заново',
       );
@@ -127,7 +234,7 @@ export class ImportService {
       data: { status: 'importing' },
     });
 
-    const { rows } = parseCsv(fileContent);
+    const { rows } = parsedData;
     let importedRows = 0;
     let errorRows = 0;
     const errors: { row: number; error: string }[] = [];
@@ -179,7 +286,7 @@ export class ImportService {
             throw new Error('Обязательные поля: Объект, Этаж, Площадь, Цена');
           }
 
-          // Находим объект по названию
+          // Поиск объекта по названию
           const property = await this.prisma.property.findFirst({
             where: { tenantId, name: propertyName, deletedAt: null },
           });
@@ -245,7 +352,7 @@ export class ImportService {
             throw new Error(`Клиент с ИНН ${clientInn} не найден`);
           }
 
-          // Ищем помещение по номеру (если указан)
+          // Поиск помещения по номеру (если указан)
           let unit: any = null;
           if (unitNumber) {
             unit = await this.prisma.unit.findFirst({
@@ -260,7 +367,7 @@ export class ImportService {
             throw new Error('Помещение обязательно для импорта договора');
           }
 
-          // Создаём заявку-заглушку для связи
+          // Заявка-заглушка для связи с договором
           const application = await this.prisma.application.create({
             data: {
               tenantId,
@@ -293,7 +400,7 @@ export class ImportService {
       }
     }
 
-    // Очищаем временные данные
+    // Очистка временных данных
     this.pendingFiles.delete(importId);
 
     await this.prisma.importJob.update({
@@ -314,8 +421,8 @@ export class ImportService {
     return { status: 'completed', imported: importedRows, errors: errorRows };
   }
 
-  /** Возвращает заголовки шаблона для указанного типа */
-  getTemplate(type: string) {
+  /** Возвращает XLSX-буфер шаблона для указанного типа */
+  getTemplate(type: string): { fileName: string; buffer: Buffer } {
     const headers: Record<string, string[]> = {
       units: [
         'Объект',
@@ -337,7 +444,21 @@ export class ImportService {
       ],
     };
 
-    return { type, headers: headers[type] || [] };
+    const cols = headers[type];
+    if (!cols || cols.length === 0) {
+      throw new BadRequestException(`Неизвестный тип шаблона: ${type}`);
+    }
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet([cols]);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Шаблон');
+
+    const xlsxBuffer: Buffer = XLSX.write(workbook, {
+      type: 'buffer',
+      bookType: 'xlsx',
+    }) as Buffer;
+
+    return { fileName: `template_${type}.xlsx`, buffer: xlsxBuffer };
   }
 
   /** Возвращает список задач импорта тенанта */

@@ -124,7 +124,13 @@ export class UnitsService {
 
     const unit = await this.prisma.unit.findFirst({
       where: { id, ...(tenantId && { tenantId }), deletedAt: null },
-      include: { property: true },
+      include: {
+        property: true,
+        contracts: {
+          include: { client: { select: { id: true, companyName: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
     if (!unit) {
       throw new NotFoundException('Помещение не найдено');
@@ -185,7 +191,7 @@ export class UnitsService {
   async remove(id: number, tenantId?: number) {
     const unit = await this.findOne(id, tenantId);
 
-    // Блокируем удаление при наличии активных договоров
+    // Блокировка удаления при наличии активных договоров
     const activeContracts = await this.prisma.contract.count({
       where: {
         unitId: id,

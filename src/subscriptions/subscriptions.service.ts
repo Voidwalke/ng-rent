@@ -64,8 +64,17 @@ export class SubscriptionsService {
 
   /** Возвращает доступные тарифы */
   getPlans() {
+    const PLAN_NAMES: Record<string, string> = {
+      free: 'Бесплатный',
+      basic: 'Базовый',
+      pro: 'Профессиональный',
+      enterprise: 'Корпоративный',
+    };
     return Object.entries(PLAN_PRICES).map(([plan, price]) => ({
+      id: plan,
+      code: plan,
       plan,
+      name: PLAN_NAMES[plan] || plan,
       priceMonthly: price,
       limits: PLAN_LIMITS[plan],
     }));
@@ -81,7 +90,7 @@ export class SubscriptionsService {
     if (current.plan === newPlan)
       throw new BadRequestException('Вы уже на этом тарифе');
 
-    // Проверяем лимиты нового плана
+    // Проверка лимитов нового плана
     const limits = PLAN_LIMITS[newPlan];
     if (limits.users > 0) {
       const usersCount = await this.prisma.user.count({
@@ -123,7 +132,7 @@ export class SubscriptionsService {
     );
 
     return this.prisma.$transaction(async (tx) => {
-      // Завершаем текущую подписку
+      // Завершение текущей подписки
       await tx.subscription.update({
         where: { id: current.id },
         data: {
@@ -133,7 +142,7 @@ export class SubscriptionsService {
         },
       });
 
-      // Создаём новую
+      // Новая подписка
       const newSub = await tx.subscription.create({
         data: {
           tenantId,
@@ -145,11 +154,32 @@ export class SubscriptionsService {
         },
       });
 
-      // Обновляем план в тенанте
+      // Обновление плана в тенанте
       await tx.tenant.update({
         where: { id: tenantId },
         data: { plan: newPlan },
       });
+
+      // Счёт для оплаты (только для платных планов)
+      const newPrice = PLAN_PRICES[newPlan];
+      if (newPrice > 0) {
+        const periodEnd2 = new Date(
+          now.getFullYear(),
+          now.getMonth() + 1,
+          Math.min(now.getDate(), 28),
+        );
+        await tx.subscriptionInvoice.create({
+          data: {
+            subscriptionId: newSub.id,
+            tenantId,
+            amount: newPrice,
+            periodStart: now,
+            periodEnd: periodEnd2,
+            dueDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), // +7 days
+            status: 'pending',
+          },
+        });
+      }
 
       return newSub;
     });
@@ -173,7 +203,7 @@ export class SubscriptionsService {
         },
       });
 
-      // Переводим на free и создаём бесплатную подписку
+      // Перевод на free и создание бесплатной подписки
       await tx.tenant.update({
         where: { id: tenantId },
         data: { plan: 'free' },
@@ -210,7 +240,7 @@ export class SubscriptionsService {
 
   /** Создаёт платёж для оплаты подписки (первый месяц или текущий счёт) */
   async payInvoice(tenantId: number, invoiceId?: number) {
-    // Находим неоплаченный счёт подписки
+    // Поиск неоплаченного счёта подписки
     const where: any = {
       tenantId,
       status: 'pending',

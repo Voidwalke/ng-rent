@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ContractTemplatesService } from './contract-templates.service';
+import { ContractGeneratorService } from '../contracts/contract-generator.service';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import { CurrentUser, Roles } from '../common/decorators';
@@ -20,7 +21,10 @@ import { UserRole } from '@prisma/client';
 @Controller('contract-templates')
 @Roles(UserRole.admin, UserRole.manager)
 export class ContractTemplatesController {
-  constructor(private readonly templatesService: ContractTemplatesService) {}
+  constructor(
+    private readonly templatesService: ContractTemplatesService,
+    private readonly generator: ContractGeneratorService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Список шаблонов договоров' })
@@ -54,6 +58,16 @@ export class ContractTemplatesController {
     @Body() dto: UpdateTemplateDto,
   ) {
     return this.templatesService.update(id, tenantId, dto);
+  }
+
+  @Get('variables/:type')
+  @ApiOperation({ summary: 'Доступные переменные для шаблона' })
+  getVariables(@Param('type') type: string) {
+    return {
+      type,
+      variables: this.generator.getTemplateVariables(type),
+      description: 'Используйте {{переменная}} в HTML-шаблоне. Пример: {{tenant.name}}',
+    };
   }
 
   @Delete(':id')

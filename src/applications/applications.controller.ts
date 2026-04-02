@@ -45,6 +45,7 @@ export class ApplicationsController {
   }
 
   @Post()
+  @Roles(UserRole.admin, UserRole.manager)
   @ApiOperation({ summary: 'Создать заявку' })
   create(
     @CurrentUser('tenantId') tenantId: number,
@@ -91,7 +92,13 @@ export class ApplicationsController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('id') userId: number,
     @CurrentUser('tenantId') tenantId: number,
+    @Body() body: { rejectionReason?: string },
   ) {
-    return this.applicationsService.reject(id, userId, tenantId);
+    return this.applicationsService.reject(
+      id,
+      userId,
+      tenantId,
+      body?.rejectionReason,
+    );
   }
 }

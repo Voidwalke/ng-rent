@@ -6,9 +6,11 @@ import {
   Param,
   Body,
   Query,
+  Res,
   ParseIntPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiProduces } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { TenantPortalService } from './tenant-portal.service';
 import { CreatePortalApplicationDto } from './dto/create-portal-application.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -81,6 +83,15 @@ export class TenantPortalController {
     return this.portalService.getMyAccessCards(user.tenantId, user.id);
   }
 
+  @Get('access-cards/:id/qr')
+  @ApiOperation({ summary: 'QR-код карты доступа' })
+  getCardQr(
+    @CurrentUser() user: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.portalService.getCardQr(user.tenantId, user.id, id);
+  }
+
   @Get('documents')
   @ApiOperation({ summary: 'Мои документы' })
   getMyDocuments(@CurrentUser() user: any) {
@@ -112,5 +123,56 @@ export class TenantPortalController {
     @Body() dto: CreateMaintenanceRequestDto,
   ) {
     return this.portalService.createMaintenance(user.tenantId, user.id, dto);
+  }
+
+  @Patch('contracts/:id/accept')
+  @ApiOperation({ summary: 'Принять / подписать договор арендатором' })
+  acceptContract(
+    @CurrentUser() user: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.portalService.acceptContract(user.tenantId, user.id, id);
+  }
+
+  @Get('export/invoices/excel')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Экспорт моих счетов в Excel' })
+  @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async exportMyInvoicesExcel(@CurrentUser() user: any, @Res() res: Response) {
+    const buffer = await this.portalService.exportMyInvoicesExcel(user.id);
+    const date = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="my_invoices_${date}.xlsx"`,
+    });
+    res.send(buffer);
+  }
+
+  @Get('export/contracts/excel')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Экспорт моих договоров в Excel' })
+  @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async exportMyContractsExcel(@CurrentUser() user: any, @Res() res: Response) {
+    const buffer = await this.portalService.exportMyContractsExcel(user.id);
+    const date = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="my_contracts_${date}.xlsx"`,
+    });
+    res.send(buffer);
+  }
+
+  @Get('export/acts/excel')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Экспорт моих актов в Excel' })
+  @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async exportMyActsExcel(@CurrentUser() user: any, @Res() res: Response) {
+    const buffer = await this.portalService.exportMyActsExcel(user.id);
+    const date = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="my_acts_${date}.xlsx"`,
+    });
+    res.send(buffer);
   }
 }

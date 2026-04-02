@@ -14,8 +14,20 @@ const TEMPLATES: Record<string, string> = {
   invoice: `
     <h2>Выставлен счёт №{{invoiceNumber}}</h2>
     <p>Сумма: <strong>{{amount}} ₽</strong></p>
-    <p>Срок оплаты: {{dueDate}}</p>
+    {{#if vatAmount}}<p>В т.ч. НДС: {{vatAmount}} ₽</p>{{/if}}
+    <p>Срок оплаты: <strong>{{dueDate}}</strong></p>
     <p>Помещение: {{unitNumber}}, {{propertyName}}</p>
+    {{#if landlordName}}
+    <hr style="margin: 16px 0;" />
+    <h3>Реквизиты для оплаты:</h3>
+    <p><strong>{{landlordName}}</strong></p>
+    {{#if landlordInn}}<p>ИНН: {{landlordInn}}{{#if landlordKpp}}, КПП: {{landlordKpp}}{{/if}}</p>{{/if}}
+    {{#if landlordBankAccount}}<p>Р/с: {{landlordBankAccount}}</p>{{/if}}
+    {{#if landlordBankName}}<p>Банк: {{landlordBankName}}</p>{{/if}}
+    {{#if landlordBik}}<p>БИК: {{landlordBik}}</p>{{/if}}
+    {{#if landlordCorrAccount}}<p>К/с: {{landlordCorrAccount}}</p>{{/if}}
+    {{/if}}
+    <p style="margin-top:16px;"><a href="{{payUrl}}" style="display:inline-block;padding:12px 24px;background:#1890ff;color:#fff;text-decoration:none;border-radius:4px;">Оплатить онлайн</a></p>
   `,
   'overdue-warning': `
     <h2>Просрочка оплаты</h2>
@@ -55,6 +67,27 @@ const TEMPLATES: Record<string, string> = {
     <p>Договор №{{contractNumber}} истекает {{endDate}}.</p>
     <p>Объект: {{propertyName}}, помещение №{{unitNumber}}</p>
     <p>Свяжитесь с управляющей компанией для продления.</p>
+  `,
+  'application-rejected': `
+    <h2>Заявка отклонена</h2>
+    <p>Ваша заявка №{{applicationId}} была отклонена.</p>
+    <p>Объект: {{propertyName}}, помещение №{{unitNumber}}</p>
+    {{#if rejectionReason}}<p>Причина: <strong>{{rejectionReason}}</strong></p>{{/if}}
+    <p>Вы можете подать новую заявку или связаться с управляющей компанией для уточнения деталей.</p>
+  `,
+  'contract-signed': `
+    <h2>Договор подписан</h2>
+    <p>Договор №{{contractNumber}} успешно подписан.</p>
+    <p>Объект: {{propertyName}}, помещение №{{unitNumber}}</p>
+    <p>Первый счёт №{{invoiceNumber}} на сумму <strong>{{totalAmount}} ₽</strong> выставлен. Срок оплаты: <strong>{{dueDate}}</strong>.</p>
+    <p>Карта СКУД выдана и активирована.</p>
+  `,
+  'new-application': `
+    <h2>Новая заявка на аренду</h2>
+    <p>Поступила заявка №{{applicationId}} от клиента <strong>{{clientName}}</strong>.</p>
+    <p>Объект: {{propertyName}}, помещение №{{unitNumber}}</p>
+    <p>Желаемый период: {{desiredStart}} — {{desiredEnd}}</p>
+    {{#if comment}}<p>Комментарий: {{comment}}</p>{{/if}}
   `,
 };
 

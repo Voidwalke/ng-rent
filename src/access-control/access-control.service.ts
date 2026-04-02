@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, Inject } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import type { IAccessControlProvider } from './access-control.provider';
 
@@ -71,6 +72,8 @@ export class AccessControlService {
       where: { id: data.contractId, tenantId },
     });
 
+    const qrToken = crypto.randomBytes(16).toString('hex');
+
     const card = await this.prisma.accessCard.create({
       data: {
         tenantId,
@@ -78,6 +81,7 @@ export class AccessControlService {
         contractId: data.contractId,
         cardNumber: data.cardNumber,
         holderName: data.holderName,
+        qrToken,
         zones: data.zones || [],
         activatedAt: new Date(),
         expiresAt: contract?.endDate,
@@ -92,6 +96,25 @@ export class AccessControlService {
     });
 
     return card;
+  }
+
+  /** Возвращает данные QR-кода для карты доступа */
+  async getQrData(id: number, tenantId?: number) {
+    const card = await this.prisma.accessCard.findFirst({
+      where: { id, ...(tenantId && { tenantId }) },
+      select: { qrToken: true, cardNumber: true, holderName: true, isActive: true },
+    });
+    if (!card) throw new NotFoundException('Карта не найдена');
+    if (!card.qrToken) {
+      // Генерация токена для старых карт, у которых его ещё нет
+      const qrToken = crypto.randomBytes(16).toString('hex');
+      await this.prisma.accessCard.update({
+        where: { id },
+        data: { qrToken },
+      });
+      return { qrToken, cardNumber: card.cardNumber, holderName: card.holderName, isActive: card.isActive };
+    }
+    return { qrToken: card.qrToken, cardNumber: card.cardNumber, holderName: card.holderName, isActive: card.isActive };
   }
 
   /** Блокирует карту доступа */
@@ -144,7 +167,7 @@ export class AccessControlService {
           reason: 'Договор завершён',
         });
       } catch {
-        // Логируем, но не падаем — карта уже заблокирована в БД
+        // Логирование без прерывания — карта уже заблокирована в БД
       }
     }
   }

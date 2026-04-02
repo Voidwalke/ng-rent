@@ -1,16 +1,25 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { MailerService } from '../mailer/mailer.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { validateTransition } from './state-machine';
 
 @Injectable()
 export class ApplicationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ApplicationsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mailer: MailerService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   /** Возвращает список заявок с фильтрацией и пагинацией */
   async findAll(
@@ -74,15 +83,23 @@ export class ApplicationsService {
       throw new BadRequestException('Дата начала не может быть в прошлом');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const unit = await tx.unit.findUnique({
-        where: { id: dto.unitId },
+    const application = await this.prisma.$transaction(async (tx) => {
+      const unit = await tx.unit.findFirst({
+        where: { id: dto.unitId, tenantId, deletedAt: null },
+        include: { property: { select: { name: true } } },
       });
       if (!unit || unit.status !== 'available') {
         throw new BadRequestException('Помещение недоступно для аренды');
       }
 
-      return tx.application.create({
+      const client = await tx.client.findFirst({
+        where: { id: dto.clientId, tenantId, deletedAt: null },
+      });
+      if (!client) {
+        throw new NotFoundException('Клиент не найден');
+      }
+
+      const app = await tx.application.create({
         data: {
           tenantId,
           unitId: dto.unitId,
@@ -93,7 +110,24 @@ export class ApplicationsService {
           status: 'draft',
         },
       });
+
+      return { app, unit, client };
     });
+
+    // Уведомление менеджеров о новой заявке
+    try {
+      await this.notifications.notifyManagers(
+        tenantId,
+        'application_submitted',
+        'Новая заявка на аренду',
+        `Заявка №${application.app.id} от ${application.client.companyName || application.client.contactName}`,
+        { applicationId: application.app.id },
+      );
+    } catch (err: any) {
+      this.logger.error(`Ошибка уведомления менеджеров (create #${application.app.id}): ${err.message}`);
+    }
+
+    return application.app;
   }
 
   /** Отправляет заявку на рассмотрение */
@@ -124,8 +158,8 @@ export class ApplicationsService {
     const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'approved');
 
-    // Резервируем помещение атомарно
-    return this.prisma.$transaction(async (tx) => {
+    // Резервирование помещения атомарно
+    const result = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.unit.updateMany({
         where: { id: app.unitId, status: 'available' },
         data: { status: 'reserved' },
@@ -145,21 +179,70 @@ export class ApplicationsService {
         },
       });
     });
+
+    // Email клиенту об одобрении заявки
+    try {
+      const email = app.client?.contactEmail;
+      if (email) {
+        await this.mailer.send(
+          email,
+          `Заявка №${id} одобрена — договор готовится`,
+          'contract-ready',
+          {
+            contractNumber: `Заявка №${id}`,
+            propertyName: app.unit?.property?.name || '',
+            unitNumber: app.unit?.unitNumber || `#${app.unitId}`,
+          },
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(`Ошибка отправки email (approve #${id}): ${err.message}`);
+    }
+
+    return result;
   }
 
   /** Отклоняет заявку */
-  async reject(id: number, userId: number, tenantId?: number) {
+  async reject(
+    id: number,
+    userId: number,
+    tenantId?: number,
+    rejectionReason?: string,
+  ) {
     const app = await this.findOne(id, tenantId);
     validateTransition(app.status, 'rejected');
 
-    return this.prisma.application.update({
+    const result = await this.prisma.application.update({
       where: { id },
       data: {
         status: 'rejected',
         reviewedById: userId,
         reviewedAt: new Date(),
+        rejectionReason: rejectionReason || null,
       },
     });
+
+    // Email клиенту об отклонении заявки
+    try {
+      const email = app.client?.contactEmail;
+      if (email) {
+        await this.mailer.send(
+          email,
+          `Заявка №${id} отклонена`,
+          'application-rejected',
+          {
+            applicationId: id,
+            propertyName: app.unit?.property?.name || '',
+            unitNumber: app.unit?.unitNumber || `#${app.unitId}`,
+            rejectionReason: rejectionReason || null,
+          },
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(`Ошибка отправки email (reject #${id}): ${err.message}`);
+    }
+
+    return result;
   }
 
   /** Переводит заявку в статус «договор отправлен» */

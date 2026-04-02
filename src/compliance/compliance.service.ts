@@ -14,17 +14,41 @@ export class ComplianceService {
     private queue: QueueService,
   ) {}
 
-  /** Фиксирует согласие пользователя на обработку ПД */
+  /** Фиксирует согласие пользователя на обработку ПД (upsert — без дублей) */
   async recordConsent(userId: number, type: string, ipAddress: string) {
+    // Проверка, есть ли уже активное согласие этого типа
+    const existing = await this.prisma.consentLog.findFirst({
+      where: { userId, type, revokedAt: null },
+    });
+    if (existing) {
+      // Обновление даты и IP (перевыдача согласия)
+      return this.prisma.consentLog.update({
+        where: { id: existing.id },
+        data: { ipAddress, acceptedAt: new Date() },
+      });
+    }
     return this.prisma.consentLog.create({
       data: { userId, type, ipAddress, acceptedAt: new Date() },
     });
   }
 
-  /** Возвращает все согласия пользователя */
+  /** Отзывает согласие */
+  async revokeConsent(userId: number, consentId: number) {
+    const consent = await this.prisma.consentLog.findFirst({
+      where: { id: consentId, userId, revokedAt: null },
+    });
+    if (!consent) throw new NotFoundException('Согласие не найдено');
+
+    return this.prisma.consentLog.update({
+      where: { id: consentId },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  /** Возвращает все активные согласия пользователя */
   async getUserConsents(userId: number) {
     return this.prisma.consentLog.findMany({
-      where: { userId },
+      where: { userId, revokedAt: null },
       orderBy: { acceptedAt: 'desc' },
     });
   }
@@ -81,7 +105,7 @@ export class ComplianceService {
         return;
       }
 
-      // Собираем все персональные данные пользователя
+      // Сбор всех персональных данных пользователя
       const [notifications, auditLogs, consents] = await Promise.all([
         this.prisma.notification.findMany({
           where: { userId: user.id },
@@ -173,7 +197,7 @@ export class ComplianceService {
 
       const fileUrl = `exports/${job.userId}/data_${Date.now()}.json`;
 
-      // Сохраняем в кэш для выдачи через getExportData
+      // Сохранение в кэш для выдачи через getExportData
       this.exportCache.set(jobId, exportData);
 
       await this.prisma.dataExportJob.update({
