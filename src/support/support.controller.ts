@@ -76,4 +76,53 @@ export class SupportController {
   close(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
     return this.supportService.close(user.tenantId, id);
   }
+
+  // ── Super Admin endpoints ──
+
+  @Get('platform/tickets')
+  @Roles(UserRole.super_admin)
+  @ApiOperation({ summary: 'Все тикеты платформы (суперадмин)' })
+  platformTickets(
+    @Query('status') status?: TicketStatus,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.supportService.findAllPlatform({ status, page: page ? +page : 1, limit: limit ? +limit : 20 });
+  }
+
+  @Get('platform/tickets/:id')
+  @Roles(UserRole.super_admin)
+  @ApiOperation({ summary: 'Тикет с историей (суперадмин)' })
+  platformTicketDetail(@Param('id', ParseIntPipe) id: number) {
+    return this.supportService.findOnePlatform(id);
+  }
+
+  @Post('platform/tickets/:id/reply')
+  @Roles(UserRole.super_admin)
+  @ApiOperation({ summary: 'Ответить на тикет от имени платформы' })
+  platformReply(
+    @CurrentUser() user: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddMessageDto,
+  ) {
+    return this.supportService.addPlatformReply(id, user.id, dto.message);
+  }
+
+  @Patch('platform/tickets/:id/resolve')
+  @Roles(UserRole.super_admin)
+  @ApiOperation({ summary: 'Решить тикет (суперадмин)' })
+  platformResolve(@Param('id', ParseIntPipe) id: number) {
+    return this.supportService.findOnePlatform(id).then((t) =>
+      this.supportService.resolve(t.tenantId, id),
+    );
+  }
+
+  @Patch('platform/tickets/:id/close')
+  @Roles(UserRole.super_admin)
+  @ApiOperation({ summary: 'Закрыть тикет (суперадмин)' })
+  platformClose(@Param('id', ParseIntPipe) id: number) {
+    return this.supportService.findOnePlatform(id).then((t) =>
+      this.supportService.close(t.tenantId, id),
+    );
+  }
 }
