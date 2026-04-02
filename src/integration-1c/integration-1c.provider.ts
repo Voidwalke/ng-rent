@@ -86,6 +86,10 @@ export class Integration1CProvider {
 
   /** Проверяет доступность 1С */
   async healthCheck(): Promise<boolean> {
+    // Если URL не задан — используется webhook-режим (1С сама подключается к NGRent)
+    if (!this.baseUrl || this.baseUrl === 'http://localhost:8080/api/1c') {
+      return true;
+    }
     try {
       const response = await fetch(`${this.baseUrl}/health`, {
         headers: { 'X-API-Key': this.apiKey },
