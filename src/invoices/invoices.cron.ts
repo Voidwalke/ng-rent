@@ -16,6 +16,18 @@ export class InvoicesCron {
     private readonly edo: EdoService,
   ) {}
 
+  /** Получает ставку НДС для тенанта */
+  private async getVatRate(tenantId: number): Promise<number> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { vatRate: true },
+    });
+    if (tenant?.vatRate !== null && tenant?.vatRate !== undefined) {
+      return Number(tenant.vatRate) / 100;
+    }
+    return 0.2;
+  }
+
   /** Генерирует ежемесячные счета по активным договорам */
   @Cron('0 3 * * *')
   async generateMonthlyInvoices() {
@@ -26,7 +38,16 @@ export class InvoicesCron {
 
       const contracts = await this.prisma.contract.findMany({
         where: { status: 'active', paymentDay: dayOfMonth },
-        include: { tenant: { select: { slug: true } } },
+        include: {
+          tenant: true,
+          client: { select: { contactEmail: true } },
+          unit: {
+            select: {
+              unitNumber: true,
+              property: { select: { name: true } },
+            },
+          },
+        },
       });
 
       let generated = 0;
@@ -53,7 +74,8 @@ export class InvoicesCron {
             0,
           );
           const amount = contract.monthlyRent;
-          const vatAmount = Math.round(Number(amount) * 0.2 * 100) / 100;
+          const vatRate = await this.getVatRate(contract.tenantId);
+          const vatAmount = Math.round(Number(amount) * vatRate * 100) / 100;
           const totalAmount =
             Math.round((Number(amount) + vatAmount) * 100) / 100;
           const dueDate = new Date();
@@ -79,6 +101,41 @@ export class InvoicesCron {
             },
           });
           generated++;
+
+          // Email клиенту о новом счёте
+          try {
+            const email = contract.client?.contactEmail;
+            if (email) {
+              const tenant = contract.tenant;
+              await this.mailer.send(
+                email,
+                `Выставлен счёт ${invoiceNumber}`,
+                'invoice',
+                {
+                  invoiceNumber,
+                  amount: totalAmount.toLocaleString('ru-RU'),
+                  vatAmount: vatAmount > 0
+                    ? vatAmount.toLocaleString('ru-RU')
+                    : null,
+                  dueDate: dueDate.toLocaleDateString('ru-RU'),
+                  unitNumber: contract.unit?.unitNumber || '',
+                  propertyName: contract.unit?.property?.name || '',
+                  landlordName: tenant?.name || '',
+                  landlordInn: tenant?.inn || '',
+                  landlordKpp: tenant?.kpp || '',
+                  landlordBankAccount: (tenant as any)?.bankAccount || '',
+                  landlordBankName: (tenant as any)?.bankName || '',
+                  landlordBik: (tenant as any)?.bik || '',
+                  landlordCorrAccount: (tenant as any)?.corrAccount || '',
+                  payUrl: '',
+                },
+              );
+            }
+          } catch (emailErr: any) {
+            this.logger.error(
+              `Ошибка отправки email для счёта ${invoiceNumber}: ${emailErr.message}`,
+            );
+          }
         } catch (err) {
           this.logger.error(
             `Ошибка генерации счёта для договора ${contract.id}: ${err.message}`,
@@ -152,13 +209,25 @@ export class InvoicesCron {
           status: 'pending',
           dueDate: { gte: today, lte: threeDaysLater },
         },
-        include: { contract: { include: { client: true } } },
+        include: {
+          contract: {
+            include: {
+              client: true,
+              unit: { include: { property: true } },
+            },
+          },
+        },
       });
 
       for (const invoice of upcoming) {
         try {
           const email = invoice.contract?.client?.contactEmail;
           if (email) {
+            // Получение реквизитов арендодателя
+            const tenant = await this.prisma.tenant.findUnique({
+              where: { id: invoice.tenantId },
+            });
+
             await this.mailer.send(
               email,
               `Напоминание об оплате счёта ${invoice.invoiceNumber}`,
@@ -166,9 +235,20 @@ export class InvoicesCron {
               {
                 invoiceNumber: invoice.invoiceNumber,
                 amount: Number(invoice.totalAmount).toLocaleString('ru-RU'),
+                vatAmount: Number(invoice.vatAmount || 0) > 0
+                  ? Number(invoice.vatAmount).toLocaleString('ru-RU')
+                  : null,
                 dueDate: invoice.dueDate.toLocaleDateString('ru-RU'),
-                unitNumber: '',
-                propertyName: '',
+                unitNumber: invoice.contract?.unit?.unitNumber || `#${invoice.contract?.unit?.id}`,
+                propertyName: invoice.contract?.unit?.property?.name || '',
+                landlordName: tenant?.name || '',
+                landlordInn: tenant?.inn || '',
+                landlordKpp: tenant?.kpp || '',
+                landlordBankAccount: (tenant as any)?.bankAccount || '',
+                landlordBankName: (tenant as any)?.bankName || '',
+                landlordBik: (tenant as any)?.bik || '',
+                landlordCorrAccount: (tenant as any)?.corrAccount || '',
+                payUrl: '',
               },
             );
           }
@@ -254,7 +334,14 @@ export class InvoicesCron {
       const overdueInvoices = await this.prisma.invoice.findMany({
         where: { status: 'overdue' },
         include: {
-          contract: { select: { contractNumber: true, tenantId: true } },
+          contract: {
+            select: {
+              contractNumber: true,
+              tenantId: true,
+              penaltyRate: true,
+              penaltyMaxPercent: true,
+            },
+          },
         },
       });
 
@@ -267,8 +354,13 @@ export class InvoicesCron {
           if (daysOverdue <= 0) continue;
 
           const baseAmount = Number(inv.totalAmount);
-          const penaltyRate = 0.001; // 0.1% в день
-          const maxPenaltyRate = 0.1; // max 10%
+          // Ставка пени из договора или дефолт 0.1%/день, max 10%
+          const penaltyRate = inv.contract?.penaltyRate
+            ? Number(inv.contract.penaltyRate) / 100
+            : 0.001;
+          const maxPenaltyRate = inv.contract?.penaltyMaxPercent
+            ? Number(inv.contract.penaltyMaxPercent) / 100
+            : 0.1;
           const penaltyAmount = Math.min(
             baseAmount * penaltyRate * daysOverdue,
             baseAmount * maxPenaltyRate,

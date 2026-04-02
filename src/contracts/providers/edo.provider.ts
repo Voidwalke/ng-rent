@@ -202,7 +202,7 @@ export class DiadocEdoProvider implements IEdoProvider {
       throw new Error('Не найден документ в сообщении Диадок');
     }
 
-    // Скачиваем содержимое по entityId
+    // Скачивание содержимого по entityId
     const response = await fetch(
       `${this.apiUrl}/V4/GetEntityContent?messageId=${documentId}&entityId=${entity.EntityId}`,
       {

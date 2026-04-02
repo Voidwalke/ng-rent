@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ContractsService } from './contracts.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailerService } from '../mailer/mailer.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 describe('ContractsService', () => {
@@ -15,6 +16,7 @@ describe('ContractsService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
+    tenant: { findUnique: jest.fn() },
     unit: { update: jest.fn(), updateMany: jest.fn() },
     invoice: {
       updateMany: jest.fn(),
@@ -25,7 +27,11 @@ describe('ContractsService', () => {
     },
     accessCard: { updateMany: jest.fn(), create: jest.fn() },
     application: { findUnique: jest.fn(), update: jest.fn() },
-    $transaction: jest.fn((fn) => fn(mockPrisma)),
+    $transaction: jest.fn((fn: any) => fn(mockPrisma)),
+  };
+
+  const mockMailer = {
+    send: jest.fn().mockResolvedValue(undefined),
   };
 
   beforeEach(async () => {
@@ -33,6 +39,7 @@ describe('ContractsService', () => {
       providers: [
         ContractsService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: MailerService, useValue: mockMailer },
       ],
     }).compile();
 
@@ -44,8 +51,11 @@ describe('ContractsService', () => {
     expect(service).toBeDefined();
   });
 
+  /* ------------------------------------------------------------------ */
+  /*  findAll                                                            */
+  /* ------------------------------------------------------------------ */
   describe('findAll', () => {
-    it('должен вернуть список договоров с пагинацией', async () => {
+    it('should return paginated contract list', async () => {
       mockPrisma.contract.findMany.mockResolvedValueOnce([
         { id: 1, contractNumber: 'C-001', status: 'active' },
       ]);
@@ -57,7 +67,7 @@ describe('ContractsService', () => {
       expect(result.pages).toBe(1);
     });
 
-    it('должен ограничивать limit до 100', async () => {
+    it('should cap limit at 100', async () => {
       mockPrisma.contract.findMany.mockResolvedValueOnce([]);
       mockPrisma.contract.count.mockResolvedValueOnce(0);
 
@@ -68,8 +78,11 @@ describe('ContractsService', () => {
     });
   });
 
+  /* ------------------------------------------------------------------ */
+  /*  findOne                                                            */
+  /* ------------------------------------------------------------------ */
   describe('findOne', () => {
-    it('должен вернуть договор по id', async () => {
+    it('should return contract by id', async () => {
       mockPrisma.contract.findFirst.mockResolvedValueOnce({
         id: 1,
         contractNumber: 'C-001',
@@ -78,14 +91,17 @@ describe('ContractsService', () => {
       expect(result.contractNumber).toBe('C-001');
     });
 
-    it('должен выбросить NotFoundException если не найден', async () => {
+    it('should throw NotFoundException if not found', async () => {
       mockPrisma.contract.findFirst.mockResolvedValueOnce(null);
       await expect(service.findOne(999)).rejects.toThrow(NotFoundException);
     });
   });
 
+  /* ------------------------------------------------------------------ */
+  /*  generateFromApplication                                            */
+  /* ------------------------------------------------------------------ */
   describe('generateFromApplication', () => {
-    it('должен создать договор по одобренной заявке', async () => {
+    it('should create contract from approved application', async () => {
       const app = {
         id: 1,
         tenantId: 1,
@@ -107,7 +123,7 @@ describe('ContractsService', () => {
       mockPrisma.application.update.mockResolvedValueOnce({});
 
       const result = await service.generateFromApplication(1, 1);
-      expect(result.monthlyRent).toBe(80000); // desiredPrice
+      expect(result.monthlyRent).toBe(80000);
       expect(result.status).toBe('draft');
       expect(result.clientId).toBe(5);
       expect(mockPrisma.application.update).toHaveBeenCalledWith(
@@ -117,7 +133,7 @@ describe('ContractsService', () => {
       );
     });
 
-    it('должен использовать priceMonth если desiredPrice не указан', async () => {
+    it('should use unit priceMonth when desiredPrice is null', async () => {
       const app = {
         id: 1,
         tenantId: 1,
@@ -142,7 +158,7 @@ describe('ContractsService', () => {
       expect(result.monthlyRent).toBe(90000);
     });
 
-    it('должен отклонить неодобренную заявку', async () => {
+    it('should throw BadRequestException if application is not approved', async () => {
       mockPrisma.application.findUnique.mockResolvedValueOnce({
         id: 1,
         tenantId: 1,
@@ -153,7 +169,29 @@ describe('ContractsService', () => {
       );
     });
 
-    it('должен отклонить заявку другого тенанта', async () => {
+    it('should throw BadRequestException if application status is submitted (not approved)', async () => {
+      mockPrisma.application.findUnique.mockResolvedValueOnce({
+        id: 1,
+        tenantId: 1,
+        status: 'submitted',
+      });
+      await expect(service.generateFromApplication(1, 1)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should throw BadRequestException if application status is rejected', async () => {
+      mockPrisma.application.findUnique.mockResolvedValueOnce({
+        id: 1,
+        tenantId: 1,
+        status: 'rejected',
+      });
+      await expect(service.generateFromApplication(1, 1)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should throw NotFoundException if application belongs to different tenant', async () => {
       mockPrisma.application.findUnique.mockResolvedValueOnce({
         id: 1,
         tenantId: 999,
@@ -163,8 +201,18 @@ describe('ContractsService', () => {
         NotFoundException,
       );
     });
+
+    it('should throw NotFoundException if application does not exist', async () => {
+      mockPrisma.application.findUnique.mockResolvedValueOnce(null);
+      await expect(service.generateFromApplication(1, 1)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
   });
 
+  /* ------------------------------------------------------------------ */
+  /*  sign                                                               */
+  /* ------------------------------------------------------------------ */
   describe('sign', () => {
     const baseContract = {
       id: 1,
@@ -178,10 +226,11 @@ describe('ContractsService', () => {
       monthlyRent: 100000,
       depositAmount: 100000,
       status: 'draft',
-      client: { contactName: 'Иванов И.И.' },
+      client: { contactName: 'Ivanov I.I.', contactEmail: null },
+      unit: { unitNumber: '101', property: { name: 'BC Alpha' } },
     };
 
-    it('должен подписать договор, создать счёт, депозит и карту СКУД', async () => {
+    it('should sign a draft contract, create invoice, deposit and access card', async () => {
       mockPrisma.contract.findFirst.mockResolvedValueOnce(baseContract);
       mockPrisma.contract.findFirst.mockResolvedValueOnce(null); // no overlap
       mockPrisma.contract.update.mockResolvedValueOnce({
@@ -190,40 +239,38 @@ describe('ContractsService', () => {
       });
       mockPrisma.unit.update.mockResolvedValueOnce({});
       mockPrisma.application.update.mockResolvedValueOnce({});
+      mockPrisma.tenant.findUnique.mockResolvedValueOnce({ vatRate: null });
       mockPrisma.invoice.create.mockResolvedValue({});
       mockPrisma.accessCard.create.mockResolvedValueOnce({});
 
       const result = await service.sign(1, 1);
       expect(result.status).toBe('signed');
 
-      // Помещение → rented
       expect(mockPrisma.unit.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: { status: 'rented' },
         }),
       );
 
-      // Заявка → signed
       expect(mockPrisma.application.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: { status: 'signed' },
         }),
       );
 
-      // Первый счёт с НДС + депозит = 2 вызова invoice.create
+      // First invoice + deposit = 2 calls
       expect(mockPrisma.invoice.create).toHaveBeenCalledTimes(2);
 
-      // Проверяем НДС на первом счёте
+      // Check VAT on first invoice
       const firstInvoiceCall = mockPrisma.invoice.create.mock.calls[0][0];
       expect(Number(firstInvoiceCall.data.amount)).toBe(100000);
       expect(Number(firstInvoiceCall.data.vatAmount)).toBe(20000);
       expect(Number(firstInvoiceCall.data.totalAmount)).toBe(120000);
 
-      // Карта СКУД создана
       expect(mockPrisma.accessCard.create).toHaveBeenCalledTimes(1);
     });
 
-    it('должен отклонить подписание договора не в статусе draft/sent', async () => {
+    it('should throw BadRequestException if contract is not in draft/sent status', async () => {
       mockPrisma.contract.findFirst.mockResolvedValueOnce({
         ...baseContract,
         status: 'active',
@@ -231,7 +278,43 @@ describe('ContractsService', () => {
       await expect(service.sign(1, 1)).rejects.toThrow(BadRequestException);
     });
 
-    it('не должен создавать счёт на депозит если depositAmount = 0', async () => {
+    it('should throw BadRequestException if contract is already signed', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({
+        ...baseContract,
+        status: 'signed',
+      });
+      await expect(service.sign(1, 1)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if contract is terminated', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({
+        ...baseContract,
+        status: 'terminated',
+      });
+      await expect(service.sign(1, 1)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should allow signing a contract with status sent', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({
+        ...baseContract,
+        status: 'sent',
+      });
+      mockPrisma.contract.findFirst.mockResolvedValueOnce(null); // no overlap
+      mockPrisma.contract.update.mockResolvedValueOnce({
+        ...baseContract,
+        status: 'signed',
+      });
+      mockPrisma.unit.update.mockResolvedValueOnce({});
+      mockPrisma.application.update.mockResolvedValueOnce({});
+      mockPrisma.tenant.findUnique.mockResolvedValueOnce({ vatRate: null });
+      mockPrisma.invoice.create.mockResolvedValue({});
+      mockPrisma.accessCard.create.mockResolvedValueOnce({});
+
+      const result = await service.sign(1, 1);
+      expect(result.status).toBe('signed');
+    });
+
+    it('should not create deposit invoice if depositAmount is 0', async () => {
       mockPrisma.contract.findFirst.mockResolvedValueOnce({
         ...baseContract,
         depositAmount: 0,
@@ -240,15 +323,18 @@ describe('ContractsService', () => {
       mockPrisma.contract.update.mockResolvedValueOnce({});
       mockPrisma.unit.update.mockResolvedValueOnce({});
       mockPrisma.application.update.mockResolvedValueOnce({});
+      mockPrisma.tenant.findUnique.mockResolvedValueOnce({ vatRate: null });
       mockPrisma.invoice.create.mockResolvedValue({});
       mockPrisma.accessCard.create.mockResolvedValueOnce({});
 
       await service.sign(1, 1);
-      // Только 1 счёт (без депозита)
       expect(mockPrisma.invoice.create).toHaveBeenCalledTimes(1);
     });
   });
 
+  /* ------------------------------------------------------------------ */
+  /*  terminate                                                          */
+  /* ------------------------------------------------------------------ */
   describe('terminate', () => {
     const activeContract = {
       id: 1,
@@ -261,7 +347,7 @@ describe('ContractsService', () => {
       depositAmount: 50000,
     };
 
-    it('должен расторгнуть договор и освободить помещение', async () => {
+    it('should terminate an active contract and release the unit', async () => {
       mockPrisma.contract.findFirst.mockResolvedValueOnce(activeContract);
       mockPrisma.contract.update.mockResolvedValueOnce({
         status: 'terminated',
@@ -271,19 +357,17 @@ describe('ContractsService', () => {
       mockPrisma.application.update.mockResolvedValueOnce({});
       mockPrisma.invoice.updateMany.mockResolvedValueOnce({ count: 0 });
       mockPrisma.invoice.findMany.mockResolvedValueOnce([]);
-      mockPrisma.invoice.findFirst.mockResolvedValueOnce(null); // no paid deposit
+      mockPrisma.invoice.findFirst.mockResolvedValueOnce(null);
 
-      const result = await service.terminate(1, 'По соглашению сторон');
+      const result = await service.terminate(1, 'By mutual agreement');
       expect(result.message).toBe('Договор расторгнут');
 
-      // Помещение → available
       expect(mockPrisma.unit.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: { status: 'available' },
         }),
       );
 
-      // СКУД заблокирован
       expect(mockPrisma.accessCard.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -292,23 +376,58 @@ describe('ContractsService', () => {
           }),
         }),
       );
-
-      // Заявка → terminated (не rejected)
-      expect(mockPrisma.application.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: { status: 'terminated' },
-        }),
-      );
     });
 
-    it('должен создать кредит-ноты для оплаченных будущих счетов', async () => {
+    it('should throw BadRequestException if contract is not active or signed', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({
+        ...activeContract,
+        status: 'draft',
+      });
+      await expect(service.terminate(1)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if contract is expired', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({
+        ...activeContract,
+        status: 'expired',
+      });
+      await expect(service.terminate(1)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if contract is already terminated', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({
+        ...activeContract,
+        status: 'terminated',
+      });
+      await expect(service.terminate(1)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should allow terminating a signed contract', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({
+        ...activeContract,
+        status: 'signed',
+      });
+      mockPrisma.contract.update.mockResolvedValueOnce({
+        status: 'terminated',
+      });
+      mockPrisma.unit.update.mockResolvedValueOnce({});
+      mockPrisma.accessCard.updateMany.mockResolvedValueOnce({});
+      mockPrisma.application.update.mockResolvedValueOnce({});
+      mockPrisma.invoice.updateMany.mockResolvedValueOnce({ count: 0 });
+      mockPrisma.invoice.findMany.mockResolvedValueOnce([]);
+      mockPrisma.invoice.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.terminate(1, 'Early termination');
+      expect(result.message).toBe('Договор расторгнут');
+    });
+
+    it('should create credit notes for paid future invoices', async () => {
       mockPrisma.contract.findFirst.mockResolvedValueOnce(activeContract);
       mockPrisma.contract.update.mockResolvedValueOnce({});
       mockPrisma.unit.update.mockResolvedValueOnce({});
       mockPrisma.accessCard.updateMany.mockResolvedValueOnce({});
       mockPrisma.application.update.mockResolvedValueOnce({});
       mockPrisma.invoice.updateMany.mockResolvedValueOnce({ count: 0 });
-      // Оплаченный будущий счёт
       mockPrisma.invoice.findMany.mockResolvedValueOnce([
         {
           id: 10,
@@ -322,11 +441,10 @@ describe('ContractsService', () => {
       ]);
       mockPrisma.invoice.count.mockResolvedValueOnce(5);
       mockPrisma.invoice.create.mockResolvedValue({});
-      mockPrisma.invoice.findFirst.mockResolvedValueOnce(null); // no deposit
+      mockPrisma.invoice.findFirst.mockResolvedValueOnce(null);
 
-      await service.terminate(1, 'Расторжение');
+      await service.terminate(1, 'Termination');
 
-      // Кредит-нота с отрицательными суммами
       expect(mockPrisma.invoice.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -339,24 +457,23 @@ describe('ContractsService', () => {
       );
     });
 
-    it('должен вернуть депозит если он был оплачен', async () => {
+    it('should refund deposit if it was paid', async () => {
       mockPrisma.contract.findFirst.mockResolvedValueOnce(activeContract);
       mockPrisma.contract.update.mockResolvedValueOnce({});
       mockPrisma.unit.update.mockResolvedValueOnce({});
       mockPrisma.accessCard.updateMany.mockResolvedValueOnce({});
       mockPrisma.application.update.mockResolvedValueOnce({});
       mockPrisma.invoice.updateMany.mockResolvedValueOnce({ count: 0 });
-      mockPrisma.invoice.findMany.mockResolvedValueOnce([]); // no future invoices
+      mockPrisma.invoice.findMany.mockResolvedValueOnce([]);
       mockPrisma.invoice.findFirst.mockResolvedValueOnce({
         id: 20,
         status: 'paid',
-      }); // paid deposit
+      });
       mockPrisma.invoice.count.mockResolvedValueOnce(3);
       mockPrisma.invoice.create.mockResolvedValue({});
 
       await service.terminate(1);
 
-      // Кредит-нота на возврат депозита
       expect(mockPrisma.invoice.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -367,16 +484,69 @@ describe('ContractsService', () => {
         }),
       );
     });
+  });
 
-    it('не должен расторгать договор не в статусе active/signed', async () => {
+  /* ------------------------------------------------------------------ */
+  /*  checkUnitOverlap (tested through generateFromApplication)          */
+  /* ------------------------------------------------------------------ */
+  describe('checkUnitOverlap (via generateFromApplication)', () => {
+    it('should detect overlapping dates and throw BadRequestException', async () => {
+      const app = {
+        id: 1,
+        tenantId: 1,
+        status: 'approved',
+        unitId: 10,
+        clientId: 5,
+        desiredStart: new Date('2026-04-01'),
+        desiredEnd: new Date('2027-03-31'),
+        desiredPrice: 80000,
+        unit: { priceMonth: 90000 },
+      };
+      mockPrisma.application.findUnique.mockResolvedValueOnce(app);
+
+      // Overlap: existing contract on same unit with overlapping period
       mockPrisma.contract.findFirst.mockResolvedValueOnce({
-        ...activeContract,
-        status: 'draft',
+        id: 99,
+        contractNumber: 'D-EXISTING-001',
+        startDate: new Date('2026-06-01'),
+        endDate: new Date('2027-01-31'),
       });
-      await expect(service.terminate(1)).rejects.toThrow(BadRequestException);
+
+      await expect(service.generateFromApplication(1, 1)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should not throw if no overlapping contract exists', async () => {
+      const app = {
+        id: 1,
+        tenantId: 1,
+        status: 'approved',
+        unitId: 10,
+        clientId: 5,
+        desiredStart: new Date('2026-04-01'),
+        desiredEnd: new Date('2027-03-31'),
+        desiredPrice: 80000,
+        unit: { priceMonth: 90000 },
+      };
+      mockPrisma.application.findUnique.mockResolvedValueOnce(app);
+      mockPrisma.contract.findFirst.mockResolvedValueOnce(null); // no overlap
+      mockPrisma.contract.count.mockResolvedValueOnce(0);
+      mockPrisma.contract.create.mockImplementation(({ data }: any) => ({
+        id: 1,
+        ...data,
+      }));
+      mockPrisma.application.update.mockResolvedValueOnce({});
+
+      const result = await service.generateFromApplication(1, 1);
+      expect(result).toBeDefined();
+      expect(result.status).toBe('draft');
     });
   });
 
+  /* ------------------------------------------------------------------ */
+  /*  renew                                                              */
+  /* ------------------------------------------------------------------ */
   describe('renew', () => {
     const signedContract = {
       id: 1,
@@ -388,10 +558,10 @@ describe('ContractsService', () => {
       contractNumber: 'D-202601-0001',
       monthlyRent: 100000,
       endDate: new Date('2027-03-31'),
-      client: { contactName: 'Иванов' },
+      client: { contactName: 'Ivanov' },
     };
 
-    it('должен продлить договор с новой ставкой', async () => {
+    it('should renew a contract with new monthly rent', async () => {
       mockPrisma.contract.findFirst.mockResolvedValueOnce(signedContract);
       mockPrisma.contract.findFirst.mockResolvedValueOnce(null); // no overlap
       mockPrisma.contract.update.mockResolvedValueOnce({
@@ -413,17 +583,13 @@ describe('ContractsService', () => {
 
       expect(result.monthlyRent).toBe(110000);
       expect(result.status).toBe('signed');
-      // Старый договор → expired
       expect(mockPrisma.contract.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: { status: 'expired' },
         }),
       );
-      // Первый счёт создан
       expect(mockPrisma.invoice.create).toHaveBeenCalledTimes(1);
-      // Новая карта СКУД
       expect(mockPrisma.accessCard.create).toHaveBeenCalledTimes(1);
-      // Старые карты заблокированы
       expect(mockPrisma.accessCard.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ isActive: false }),

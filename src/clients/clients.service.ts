@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto } from './dto/create-client.dto';
@@ -27,7 +28,7 @@ export class ClientsService {
     const page = filters?.page || 1;
     const limit = Math.min(filters?.limit || 50, 100);
 
-    const [data, total] = await Promise.all([
+    const [clients, total] = await Promise.all([
       this.prisma.client.findMany({
         where,
         skip: (page - 1) * limit,
@@ -36,6 +37,46 @@ export class ClientsService {
       }),
       this.prisma.client.count({ where }),
     ]);
+
+    // Вычисление суммы просроченных счетов для каждого клиента
+    const clientIds = clients.map((c) => c.id);
+    const overdueAgg = clientIds.length
+      ? await this.prisma.invoice.groupBy({
+          by: ['contractId'],
+          where: {
+            tenantId,
+            status: 'overdue',
+            contract: { clientId: { in: clientIds } },
+          },
+          _sum: { totalAmount: true },
+        })
+      : [];
+
+    // Маппинг contractId → clientId
+    const contractClientMap: Record<number, number> = {};
+    if (overdueAgg.length) {
+      const contracts = await this.prisma.contract.findMany({
+        where: { id: { in: overdueAgg.map((a) => a.contractId) } },
+        select: { id: true, clientId: true },
+      });
+      for (const c of contracts) {
+        contractClientMap[c.id] = c.clientId;
+      }
+    }
+
+    const overdueByClient: Record<number, number> = {};
+    for (const agg of overdueAgg) {
+      const cid = contractClientMap[agg.contractId];
+      if (cid) {
+        overdueByClient[cid] =
+          (overdueByClient[cid] || 0) + (Number(agg._sum.totalAmount) || 0);
+      }
+    }
+
+    const data = clients.map((c) => ({
+      ...c,
+      overdueAmount: overdueByClient[c.id] || 0,
+    }));
 
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
@@ -51,6 +92,14 @@ export class ClientsService {
 
   /** Создаёт нового клиента */
   async create(tenantId: number, dto: CreateClientDto) {
+    if (dto.inn) {
+      const existing = await this.prisma.client.findFirst({
+        where: { tenantId, inn: dto.inn, deletedAt: null },
+      });
+      if (existing) {
+        throw new ConflictException(`Контрагент с ИНН ${dto.inn} уже существует`);
+      }
+    }
     return this.prisma.client.create({
       data: { ...dto, tenantId },
     });

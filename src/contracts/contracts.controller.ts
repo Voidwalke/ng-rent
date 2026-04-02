@@ -127,9 +127,9 @@ export class ContractsController {
   terminate(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('tenantId') tenantId: number,
-    @Body('reason') reason?: string,
+    @Body() body: { reason?: string; depositAction?: 'return' | 'withhold' | 'partial'; depositWithheldAmount?: number; depositWithheldReason?: string },
   ) {
-    return this.contractsService.terminate(id, reason, tenantId);
+    return this.contractsService.terminate(id, body.reason, tenantId, body.depositAction, body.depositWithheldAmount, body.depositWithheldReason);
   }
 
   @Get(':id/pdf')
@@ -160,6 +160,121 @@ export class ContractsController {
       'Content-Length': pdfBuffer.length,
     });
 
+    res.end(pdfBuffer);
+  }
+
+  @Get(':id/handover-act')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Скачать акт приёма-передачи' })
+  @ApiProduces('application/pdf')
+  async downloadHandoverAct(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+    @Res() res: Response,
+  ) {
+    const contract = await this.contractsService.findOne(id, tenantId);
+    const tenantOrg = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+    const pdfBuffer = await this.contractGenerator.generateHandoverActPdf({
+      tenant: tenantOrg || {},
+      client: contract.client || {},
+      property: (contract as any).unit?.property || {},
+      unit: contract.unit || {},
+      contract,
+    });
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="handover_act_${contract.contractNumber}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.end(pdfBuffer);
+  }
+
+  @Get(':id/reconciliation')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Скачать акт сверки взаимных расчётов' })
+  @ApiProduces('application/pdf')
+  async downloadReconciliation(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+    @Res() res: Response,
+  ) {
+    const contract = await this.contractsService.findOne(id, tenantId);
+    const tenantOrg = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+
+    // Сбор данных по счетам и платежам
+    const invoices = (contract.invoices || []).map((inv: any) => ({
+      date: new Date(inv.createdAt).toLocaleDateString('ru-RU'),
+      number: inv.invoiceNumber,
+      amount: Number(inv.totalAmount).toLocaleString('ru-RU'),
+    }));
+
+    const payments = await this.prisma.payment.findMany({
+      where: { invoiceId: { in: (contract.invoices || []).map((i: any) => i.id) } },
+    });
+    const paymentRows = payments.map((p: any) => ({
+      date: new Date(p.createdAt).toLocaleDateString('ru-RU'),
+      reference: p.externalId || `PAY-${p.id}`,
+      amount: Number(p.amount).toLocaleString('ru-RU'),
+    }));
+
+    const totalDebited = (contract.invoices || []).reduce((s: number, i: any) => s + Number(i.totalAmount), 0);
+    const totalCredited = payments.reduce((s: number, p: any) => s + Number(p.amount), 0);
+
+    const pdfBuffer = await this.contractGenerator.generateReconciliationPdf({
+      tenant: tenantOrg || {},
+      client: contract.client || {},
+      contract,
+      invoices,
+      payments: paymentRows,
+      periodStart: new Date(contract.startDate).toLocaleDateString('ru-RU'),
+      periodEnd: new Date().toLocaleDateString('ru-RU'),
+      openingBalance: '0',
+      totalDebited: totalDebited.toLocaleString('ru-RU'),
+      totalCredited: totalCredited.toLocaleString('ru-RU'),
+      closingBalance: (totalDebited - totalCredited).toLocaleString('ru-RU'),
+    });
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="reconciliation_${contract.contractNumber}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.end(pdfBuffer);
+  }
+
+  @Post(':id/amendment')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Сгенерировать дополнительное соглашение' })
+  @ApiProduces('application/pdf')
+  async generateAmendment(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+    @Body() body: { changes: string[] },
+    @Res() res: Response,
+  ) {
+    const contract = await this.contractsService.findOne(id, tenantId);
+    const tenantOrg = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+
+    // Определение номера доп. соглашения
+    const existingAmendments = await this.prisma.document.count({
+      where: { tenantId, entityType: 'contract', entityId: id, category: 'amendment' },
+    });
+
+    const pdfBuffer = await this.contractGenerator.generateAmendmentPdf({
+      tenant: tenantOrg || {},
+      client: contract.client || {},
+      contract,
+      amendmentNumber: existingAmendments + 1,
+      changes: body.changes,
+    });
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="amendment_${contract.contractNumber}_${existingAmendments + 1}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
     res.end(pdfBuffer);
   }
 

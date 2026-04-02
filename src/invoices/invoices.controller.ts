@@ -6,18 +6,23 @@ import {
   Param,
   Query,
   Body,
+  Res,
   ParseIntPipe,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiTags,
   ApiBearerAuth,
   ApiOperation,
   ApiQuery,
 } from '@nestjs/swagger';
+import { ApiProduces } from '@nestjs/swagger';
 import { InvoicesService } from './invoices.service';
 import { PayInvoiceDto } from './dto/pay-invoice.dto';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { CreditNoteDto } from './dto/credit-note.dto';
+import { ContractGeneratorService } from '../contracts/contract-generator.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser, Roles } from '../common/decorators';
 import { UserRole } from '@prisma/client';
 
@@ -25,7 +30,11 @@ import { UserRole } from '@prisma/client';
 @ApiBearerAuth()
 @Controller('invoices')
 export class InvoicesController {
-  constructor(private readonly invoicesService: InvoicesService) {}
+  constructor(
+    private readonly invoicesService: InvoicesService,
+    private readonly contractGenerator: ContractGeneratorService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Список счетов' })
@@ -102,5 +111,69 @@ export class InvoicesController {
     @CurrentUser('tenantId') tenantId: number,
   ) {
     return this.invoicesService.cancel(id, tenantId);
+  }
+
+  @Get(':id/document')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Скачать счёт на оплату (PDF)' })
+  @ApiProduces('application/pdf')
+  async downloadInvoiceDoc(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+    @Res() res: Response,
+  ) {
+    const invoice = await this.invoicesService.findOne(id, tenantId);
+    const tenantOrg = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    const contract = invoice.contract;
+    const pdfBuffer = await this.contractGenerator.generateInvoiceDocPdf({
+      tenant: tenantOrg || {},
+      client: contract?.client || {},
+      property: (contract as any)?.unit?.property || {},
+      unit: (contract as any)?.unit || {},
+      invoice,
+    });
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="invoice_${invoice.invoiceNumber}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.end(pdfBuffer);
+  }
+
+  @Get(':id/schet-faktura')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Скачать счёт-фактуру (PDF)' })
+  @ApiProduces('application/pdf')
+  async downloadSchetFaktura(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('tenantId') tenantId: number,
+    @Res() res: Response,
+  ) {
+    const invoice = await this.invoicesService.findOne(id, tenantId);
+    const tenantOrg = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    const contract = invoice.contract;
+    const pdfBuffer = await this.contractGenerator.generateSchetFakturaPdf({
+      tenant: tenantOrg || {},
+      client: contract?.client || {},
+      property: (contract as any)?.unit?.property || {},
+      unit: (contract as any)?.unit || {},
+      invoice,
+    });
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="schet_faktura_${invoice.invoiceNumber}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.end(pdfBuffer);
+  }
+
+  @Post('generate-batch')
+  @Roles(UserRole.admin, UserRole.manager)
+  @ApiOperation({ summary: 'Массовая генерация счетов по договорам' })
+  generateBatch(
+    @CurrentUser('tenantId') tenantId: number,
+    @Body() body: { contractIds: number[] },
+  ) {
+    return this.invoicesService.generateBatch(tenantId, body.contractIds);
   }
 }

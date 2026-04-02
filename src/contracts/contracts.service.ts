@@ -1,14 +1,21 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailerService } from '../mailer/mailer.service';
 
 @Injectable()
 export class ContractsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ContractsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mailer: MailerService,
+  ) {}
 
   /** Возвращает список договоров с фильтрацией и пагинацией */
   async findAll(tenantId: number, status?: string, page = 1, limit = 50) {
@@ -56,6 +63,7 @@ export class ContractsService {
     startDate: Date,
     endDate: Date,
     excludeContractId?: number,
+    tenantId?: number,
   ) {
     const where: any = {
       unitId,
@@ -64,6 +72,7 @@ export class ContractsService {
       endDate: { gt: startDate },
     };
     if (excludeContractId) where.id = { not: excludeContractId };
+    if (tenantId) where.tenantId = tenantId;
 
     const overlap = await client.contract.findFirst({ where });
     if (overlap) {
@@ -96,15 +105,24 @@ export class ContractsService {
         app.unitId,
         app.desiredStart,
         app.desiredEnd,
+        undefined,
+        tenantId,
       );
 
-      // Номер в формате D-{год}{месяц}-{порядковый}
+      // Номер в формате D-{год}{месяц}-{порядковый} с retry при коллизии
       const now = new Date();
       const prefix = `D-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const count = await tx.contract.count({
-        where: { contractNumber: { startsWith: prefix } },
-      });
-      const contractNumber = `${prefix}-${String(count + 1).padStart(4, '0')}`;
+      let contractNumber = '';
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const count = await tx.contract.count({
+          where: { contractNumber: { startsWith: prefix } },
+        });
+        contractNumber = `${prefix}-${String(count + 1 + attempt).padStart(4, '0')}`;
+        const exists = await tx.contract.findFirst({
+          where: { contractNumber },
+        });
+        if (!exists) break;
+      }
 
       const contract = await tx.contract.create({
         data: {
@@ -120,7 +138,7 @@ export class ContractsService {
         },
       });
 
-      // Переводим заявку в статус contract_sent
+      // Перевод заявки в статус contract_sent
       await tx.application.update({
         where: { id: applicationId },
         data: { status: 'contract_sent' },
@@ -139,8 +157,13 @@ export class ContractsService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      // Проверяем, что помещение не занято другим договором (защита от race condition)
+    // Сохранение данных для email-уведомления
+    let invoiceNumber = '';
+    let totalAmountForEmail = 0;
+    let dueDateForEmail: Date | null = null;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Проверка, что помещение не занято другим договором (защита от race condition)
       await this.checkUnitOverlap(
         tx,
         contract.unitId,
@@ -149,9 +172,14 @@ export class ContractsService {
         id,
       );
 
+      const depositAmt = contract.depositAmount ? Number(contract.depositAmount) : 0;
       const updated = await tx.contract.update({
         where: { id },
-        data: { status: 'signed', signedAt: new Date() },
+        data: {
+          status: 'signed',
+          signedAt: new Date(),
+          depositStatus: depositAmt > 0 ? 'pending' : null,
+        },
       });
 
       // Помещение → арендовано
@@ -166,19 +194,29 @@ export class ContractsService {
         data: { status: 'signed' },
       });
 
-      // Первый счёт с НДС
+      // Первый счёт с НДС (ставка из настроек тенанта)
+      const tenant = await tx.tenant.findUnique({
+        where: { id: contract.tenantId },
+        select: { vatRate: true },
+      });
       const amount = contract.monthlyRent;
-      const vatRate = 0.2;
+      const vatRate = tenant?.vatRate !== null && tenant?.vatRate !== undefined
+        ? Number(tenant.vatRate) / 100
+        : 0.2;
       const vatAmount = Math.round(Number(amount) * vatRate * 100) / 100;
       const totalAmount = Math.round((Number(amount) + vatAmount) * 100) / 100;
       const dueDate = new Date(contract.startDate);
       dueDate.setDate(dueDate.getDate() + 14);
 
+      invoiceNumber = `INV-${contract.contractNumber}-001`;
+      totalAmountForEmail = totalAmount;
+      dueDateForEmail = dueDate;
+
       await tx.invoice.create({
         data: {
           tenantId: contract.tenantId,
           contractId: id,
-          invoiceNumber: `INV-${contract.contractNumber}-001`,
+          invoiceNumber,
           periodStart: contract.startDate,
           periodEnd: new Date(
             new Date(contract.startDate).setMonth(
@@ -227,6 +265,32 @@ export class ContractsService {
 
       return updated;
     });
+
+    // Email клиенту о подписании договора
+    try {
+      const email = contract.client?.contactEmail;
+      if (email) {
+        await this.mailer.send(
+          email,
+          `Договор ${contract.contractNumber} подписан`,
+          'contract-signed',
+          {
+            contractNumber: contract.contractNumber,
+            propertyName: contract.unit?.property?.name || '',
+            unitNumber: contract.unit?.unitNumber || `#${contract.unitId}`,
+            invoiceNumber,
+            totalAmount: totalAmountForEmail.toLocaleString('ru-RU'),
+            dueDate: dueDateForEmail
+              ? (dueDateForEmail as Date).toLocaleDateString('ru-RU')
+              : '',
+          },
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(`Ошибка отправки email (sign contract #${id}): ${err.message}`);
+    }
+
+    return result;
   }
 
   /** Активирует подписанный договор */
@@ -296,7 +360,7 @@ export class ContractsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Проверяем overlap для нового периода (исключая текущий договор)
+      // Проверка overlap для нового периода (исключая текущий договор)
       await this.checkUnitOverlap(
         tx,
         contract.unitId,
@@ -305,19 +369,26 @@ export class ContractsService {
         id,
       );
 
-      // Завершаем текущий
+      // Завершение текущего
       await tx.contract.update({
         where: { id },
         data: { status: 'expired' },
       });
 
-      // Новый номер
+      // Новый номер с retry при коллизии
       const now = new Date();
       const prefix = `D-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const count = await tx.contract.count({
-        where: { contractNumber: { startsWith: prefix } },
-      });
-      const contractNumber = `${prefix}-${String(count + 1).padStart(4, '0')}`;
+      let contractNumber = '';
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const count = await tx.contract.count({
+          where: { contractNumber: { startsWith: prefix } },
+        });
+        contractNumber = `${prefix}-${String(count + 1 + attempt).padStart(4, '0')}`;
+        const exists = await tx.contract.findFirst({
+          where: { contractNumber },
+        });
+        if (!exists) break;
+      }
 
       const newContract = await tx.contract.create({
         data: {
@@ -329,6 +400,10 @@ export class ContractsService {
           startDate: contract.endDate,
           endDate: new Date(data.newEndDate),
           monthlyRent: data.newMonthlyRent ?? contract.monthlyRent,
+          depositAmount: contract.depositAmount,
+          paymentDay: contract.paymentDay,
+          penaltyRate: contract.penaltyRate,
+          penaltyMaxPercent: contract.penaltyMaxPercent,
           status: 'signed',
           signedAt: new Date(),
         },
@@ -336,7 +411,9 @@ export class ContractsService {
 
       // Первый счёт для нового контракта
       const monthlyRent = data.newMonthlyRent ?? Number(contract.monthlyRent);
-      const vatAmount = Math.round(monthlyRent * 0.2 * 100) / 100;
+      const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { vatRate: true } });
+      const vatRate = tenant?.vatRate !== null && tenant?.vatRate !== undefined ? Number(tenant.vatRate) / 100 : 0.2;
+      const vatAmount = Math.round(monthlyRent * vatRate * 100) / 100;
       const totalAmount = Math.round((monthlyRent + vatAmount) * 100) / 100;
       const dueDate = new Date(contract.endDate);
       dueDate.setDate(dueDate.getDate() + 14);
@@ -372,7 +449,7 @@ export class ContractsService {
         },
       });
 
-      // Блокируем старые СКУД-карты
+      // Блокировка старых СКУД-карт
       await tx.accessCard.updateMany({
         where: { contractId: id, isActive: true },
         data: {
@@ -399,7 +476,7 @@ export class ContractsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Проверяем, что продление не пересекается с другими договорами
+      // Проверка, что продление не пересекается с другими договорами
       await this.checkUnitOverlap(
         tx,
         contract.unitId,
@@ -416,7 +493,7 @@ export class ContractsService {
   }
 
   /** Расторгает договор, освобождает помещение и блокирует карты СКУД */
-  async terminate(id: number, reason?: string, tenantId?: number) {
+  async terminate(id: number, reason?: string, tenantId?: number, depositAction?: 'return' | 'withhold' | 'partial', depositWithheldAmount?: number, depositWithheldReason?: string) {
     const contract = await this.findOne(id, tenantId);
     if (!['active', 'signed'].includes(contract.status)) {
       throw new BadRequestException(
@@ -439,7 +516,7 @@ export class ContractsService {
         data: { status: 'available' },
       });
 
-      // Блокируем все карты СКУД
+      // Блокировка всех карт СКУД
       await tx.accessCard.updateMany({
         where: { contractId: id, isActive: true },
         data: {
@@ -449,7 +526,7 @@ export class ContractsService {
         },
       });
 
-      // Обновляем статус заявки
+      // Обновление статуса заявки
       if (contract.applicationId) {
         await tx.application.update({
           where: { id: contract.applicationId },
@@ -457,7 +534,7 @@ export class ContractsService {
         });
       }
 
-      // Отменяем неоплаченные счета
+      // Отмена неоплаченных счетов
       await tx.invoice.updateMany({
         where: { contractId: id, status: { in: ['pending', 'overdue'] } },
         data: { status: 'cancelled' },
@@ -492,32 +569,54 @@ export class ContractsService {
         });
       }
 
-      // Возврат обеспечительного депозита — создаём кредит-ноту
-      const depositAmount = contract.depositAmount
-        ? Number(contract.depositAmount)
-        : 0;
+      // Обработка депозита
+      const depositAmount = contract.depositAmount ? Number(contract.depositAmount) : 0;
       if (depositAmount > 0) {
-        // Проверяем, был ли оплачен депозит
         const depositInvoice = await tx.invoice.findFirst({
-          where: {
-            contractId: id,
-            invoiceNumber: { startsWith: 'DEP-' },
-            status: 'paid',
+          where: { contractId: id, invoiceNumber: { startsWith: 'DEP-' }, status: 'paid' },
+        });
+
+        const action = depositAction || 'return';
+        let returnedAmount = 0;
+        let withheldAmount = 0;
+        let status = 'returned';
+
+        if (action === 'return') {
+          returnedAmount = depositAmount;
+          status = 'returned';
+        } else if (action === 'withhold') {
+          withheldAmount = depositAmount;
+          status = 'withheld';
+        } else if (action === 'partial') {
+          withheldAmount = Math.min(depositWithheldAmount || 0, depositAmount);
+          returnedAmount = depositAmount - withheldAmount;
+          status = 'partially_withheld';
+        }
+
+        // Обновление статуса депозита в договоре
+        await tx.contract.update({
+          where: { id },
+          data: {
+            depositStatus: status,
+            depositReturnedAmount: returnedAmount > 0 ? returnedAmount : null,
+            depositWithheldAmount: withheldAmount > 0 ? withheldAmount : null,
+            depositWithheldReason: withheldAmount > 0 ? (depositWithheldReason || null) : null,
+            depositResolvedAt: new Date(),
           },
         });
-        if (depositInvoice) {
-          const invCount = await tx.invoice.count({
-            where: { contractId: id },
-          });
+
+        // Кредит-нота на возврат (если есть что возвращать и депозит был оплачен)
+        if (depositInvoice && returnedAmount > 0) {
+          const invCount = await tx.invoice.count({ where: { contractId: id } });
           await tx.invoice.create({
             data: {
               tenantId: contract.tenantId,
               contractId: id,
               invoiceNumber: `DEP-RETURN-${contract.contractNumber}-${String(invCount + 1).padStart(3, '0')}`,
-              amount: -depositAmount,
+              amount: -returnedAmount,
               vatAmount: 0,
-              totalAmount: -depositAmount,
-              dueDate: new Date(Date.now() + 10 * 86400000), // 10 рабочих дней
+              totalAmount: -returnedAmount,
+              dueDate: new Date(Date.now() + 10 * 86400000),
               status: 'paid',
               paidAt: new Date(),
             },

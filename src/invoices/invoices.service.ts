@@ -1,15 +1,22 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailerService } from '../mailer/mailer.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { CreditNoteDto } from './dto/credit-note.dto';
 
 @Injectable()
 export class InvoicesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(InvoicesService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mailer: MailerService,
+  ) {}
 
   /** Возвращает список счетов тенанта с фильтрацией */
   async findAll(
@@ -133,6 +140,14 @@ export class InvoicesService {
         }
       }
 
+      // Если оплачен депозитный счёт — обновляем статус депозита в договоре
+      if (isFullyPaid && invoice.invoiceNumber?.startsWith('DEP-') && !invoice.invoiceNumber?.startsWith('DEP-RETURN')) {
+        await tx.contract.updateMany({
+          where: { id: invoice.contractId, depositStatus: 'pending' },
+          data: { depositStatus: 'paid' },
+        });
+      }
+
       return updated;
     });
   }
@@ -149,10 +164,31 @@ export class InvoicesService {
     });
   }
 
+  /** Получает ставку НДС для тенанта (null → 20%, 0 → без НДС) */
+  private async getVatRate(tenantId: number): Promise<number> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { vatRate: true },
+    });
+    if (tenant?.vatRate !== null && tenant?.vatRate !== undefined) {
+      return Number(tenant.vatRate) / 100; // stored as percent, e.g. 20.00
+    }
+    return 0.2; // default 20%
+  }
+
   /** Создаёт ручной счёт */
   async createManual(tenantId: number, data: CreateInvoiceDto) {
     const contract = await this.prisma.contract.findFirst({
       where: { id: data.contractId, tenantId },
+      include: {
+        client: { select: { contactEmail: true } },
+        unit: {
+          select: {
+            unitNumber: true,
+            property: { select: { name: true } },
+          },
+        },
+      },
     });
     if (!contract) throw new NotFoundException('Договор не найден');
 
@@ -160,15 +196,16 @@ export class InvoicesService {
       where: { contractId: data.contractId },
     });
 
-    const vatRate = 0.2;
+    const vatRate = await this.getVatRate(tenantId);
     const vatAmount = Math.round(data.amount * vatRate * 100) / 100;
     const totalAmount = Math.round((data.amount + vatAmount) * 100) / 100;
+    const invoiceNumber = `INV-${contract.contractNumber}-${String(count + 1).padStart(3, '0')}`;
 
-    return this.prisma.invoice.create({
+    const invoice = await this.prisma.invoice.create({
       data: {
         tenantId,
         contractId: data.contractId,
-        invoiceNumber: `INV-${contract.contractNumber}-${String(count + 1).padStart(3, '0')}`,
+        invoiceNumber,
         amount: data.amount,
         vatAmount,
         totalAmount,
@@ -177,6 +214,44 @@ export class InvoicesService {
         periodEnd: data.periodEnd ? new Date(data.periodEnd) : null,
       },
     });
+
+    // Email клиенту о новом счёте
+    try {
+      const email = contract.client?.contactEmail;
+      if (email) {
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+        });
+
+        await this.mailer.send(
+          email,
+          `Выставлен счёт ${invoiceNumber}`,
+          'invoice',
+          {
+            invoiceNumber,
+            amount: totalAmount.toLocaleString('ru-RU'),
+            vatAmount: vatAmount > 0
+              ? vatAmount.toLocaleString('ru-RU')
+              : null,
+            dueDate: new Date(data.dueDate).toLocaleDateString('ru-RU'),
+            unitNumber: contract.unit?.unitNumber || '',
+            propertyName: contract.unit?.property?.name || '',
+            landlordName: tenant?.name || '',
+            landlordInn: tenant?.inn || '',
+            landlordKpp: tenant?.kpp || '',
+            landlordBankAccount: (tenant as any)?.bankAccount || '',
+            landlordBankName: (tenant as any)?.bankName || '',
+            landlordBik: (tenant as any)?.bik || '',
+            landlordCorrAccount: (tenant as any)?.corrAccount || '',
+            payUrl: '',
+          },
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(`Ошибка отправки email (invoice ${invoiceNumber}): ${err.message}`);
+    }
+
+    return invoice;
   }
 
   /** Создаёт кредит-ноту (счёт с отрицательной суммой) */
@@ -190,7 +265,7 @@ export class InvoicesService {
       where: { contractId: original.contractId },
     });
 
-    // Используем пропорцию НДС из оригинального счёта (может быть 0% для депозитов)
+    // Пропорция НДС из оригинального счёта (может быть 0% для депозитов)
     const origAmount = Number(original.amount);
     const origVat = Number(original.vatAmount);
     const vatRate = origAmount > 0 ? origVat / origAmount : 0;
@@ -209,6 +284,68 @@ export class InvoicesService {
         paidAt: new Date(),
       },
     });
+  }
+
+  /** Массово создаёт счета по списку договоров */
+  async generateBatch(tenantId: number, contractIds: number[]) {
+    const contracts = await this.prisma.contract.findMany({
+      where: {
+        id: { in: contractIds },
+        tenantId,
+        status: { in: ['signed', 'active'] },
+      },
+    });
+
+    const now = new Date();
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    // Проверка, нет ли уже счетов за текущий период
+    const existing = await this.prisma.invoice.findMany({
+      where: {
+        contractId: { in: contracts.map((c) => c.id) },
+        periodStart: { gte: periodStart },
+        periodEnd: { lte: periodEnd },
+      },
+      select: { contractId: true },
+    });
+    const existingContractIds = new Set(existing.map((e) => e.contractId));
+
+    const vatRate = await this.getVatRate(tenantId);
+    const results: any[] = [];
+    const skipped: number[] = [];
+
+    for (const contract of contracts) {
+      if (existingContractIds.has(contract.id)) {
+        skipped.push(contract.id);
+        continue;
+      }
+
+      const count = await this.prisma.invoice.count({
+        where: { contractId: contract.id },
+      });
+      const amount = Number(contract.monthlyRent);
+      const vatAmount = Math.round(amount * vatRate * 100) / 100;
+      const totalAmount = Math.round((amount + vatAmount) * 100) / 100;
+      const dueDate = new Date(now.getFullYear(), now.getMonth(), 15);
+
+      const invoice = await this.prisma.invoice.create({
+        data: {
+          tenantId,
+          contractId: contract.id,
+          invoiceNumber: `INV-${contract.contractNumber}-${String(count + 1).padStart(3, '0')}`,
+          amount,
+          vatAmount,
+          totalAmount,
+          dueDate,
+          periodStart,
+          periodEnd,
+        },
+      });
+      results.push(invoice);
+    }
+
+    return { generated: results.length, skipped: skipped.length, invoices: results };
   }
 
   /** Возвращает агрегированную сводку по счетам */

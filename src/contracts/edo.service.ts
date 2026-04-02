@@ -66,7 +66,7 @@ export class EdoService {
       where: { id: contract.tenantId },
     });
 
-    // Генерируем PDF
+    // Генерация PDF
     const pdfBuffer = await this.contractGenerator.generatePdf({
       tenant: tenant || {},
       client: contract.client || {},
@@ -75,7 +75,7 @@ export class EdoService {
       contract,
     });
 
-    // Отправляем в ЭДО
+    // Отправка в ЭДО
     const signers = [
       { name: tenant?.name || '', inn: tenant?.inn || '' },
       {
@@ -98,7 +98,7 @@ export class EdoService {
       { fromBoxId, toBoxId },
     );
 
-    // Сохраняем ID документа в ЭДО
+    // Сохранение ID документа в ЭДО
     await this.prisma.contract.update({
       where: { id: contractId },
       data: {
@@ -207,7 +207,7 @@ export class EdoService {
       await this.contractsService.sign(contractId, contract.tenantId);
     }
 
-    // Загружаем подписанный PDF в MinIO через DocumentsService
+    // Загрузка подписанного PDF в MinIO через DocumentsService
     const adminUser = await this.prisma.user.findFirst({
       where: { tenantId: contract.tenantId, role: 'admin' },
       select: { id: true },
@@ -229,7 +229,7 @@ export class EdoService {
       'contract',
     );
 
-    // Записываем URL подписанного PDF на контракт
+    // Запись URL подписанного PDF на контракт
     await this.prisma.contract.update({
       where: { id: contractId },
       data: { signedPdfUrl: doc.fileUrl },
