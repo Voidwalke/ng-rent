@@ -69,6 +69,39 @@ export class AnalyticsController {
     return this.analyticsService.getVacancyCost(tenantId);
   }
 
+  @Get('top-debtors')
+  @ApiOperation({ summary: 'Топ должников' })
+  getTopDebtors(@CurrentUser('tenantId') tenantId: number) {
+    return this.analyticsService.getTopDebtors(tenantId);
+  }
+
+  @Get('avg-payment-days')
+  @ApiOperation({ summary: 'Средний срок оплаты' })
+  getAvgPaymentDays(
+    @CurrentUser('tenantId') tenantId: number,
+    @Query() query: AnalyticsMonthsQueryDto,
+  ) {
+    return this.analyticsService.getAvgPaymentDays(tenantId, query.months ? +query.months : 6);
+  }
+
+  @Get('revenue-by-property')
+  @ApiOperation({ summary: 'Доход по объектам' })
+  getRevenueByProperty(
+    @CurrentUser('tenantId') tenantId: number,
+    @Query() query: AnalyticsMonthsQueryDto,
+  ) {
+    return this.analyticsService.getRevenueByProperty(tenantId, query.months ? +query.months : 6);
+  }
+
+  @Get('forecast')
+  @ApiOperation({ summary: 'Прогноз дохода' })
+  getForecast(
+    @CurrentUser('tenantId') tenantId: number,
+    @Query() query: AnalyticsMonthsQueryDto,
+  ) {
+    return this.analyticsService.getRevenueForecast(tenantId, query.months ? +query.months : 6);
+  }
+
   @Get('export')
   @ApiOperation({ summary: 'Экспорт аналитики (JSON)' })
   @ApiProduces('application/json')

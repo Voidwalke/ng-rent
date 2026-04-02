@@ -29,11 +29,7 @@ export class PlatformCron {
         contracts,
         timestamp: new Date().toISOString(),
       };
-      await this.redis.set(
-        'platform:live_metrics',
-        JSON.stringify(metrics),
-        600,
-      );
+      await this.redis.set('platform:live_metrics', metrics, 600);
       this.logger.debug(
         `Метрики обновлены: ${tenants} тенантов, ${users} пользователей`,
       );
