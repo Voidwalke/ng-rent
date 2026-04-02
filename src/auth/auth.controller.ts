@@ -1,5 +1,5 @@
 import { Throttle } from '@nestjs/throttler';
-import { Controller, Post, Get, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Patch, Body, Param } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -69,16 +69,30 @@ export class AuthController {
 
   @Post('2fa/enable')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Включить 2FA' })
-  enable2fa(@CurrentUser() user: any) {
-    return this.authService.enable2fa(user.id);
+  @ApiOperation({ summary: 'Включить 2FA по email (без code — отправит OTP, с code — подтвердит)' })
+  enable2fa(@CurrentUser() user: any, @Body() dto: { code?: string }) {
+    return this.authService.enable2fa(user.id, dto?.code);
   }
 
   @Post('2fa/disable')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Отключить 2FA (требуется OTP)' })
-  disable2fa(@CurrentUser() user: any, @Body('code') code: string) {
-    return this.authService.disable2fa(user.id, code);
+  @ApiOperation({ summary: 'Отключить 2FA (TOTP-код, email OTP или пароль)' })
+  disable2fa(@CurrentUser() user: any, @Body() dto: { code?: string; password?: string }) {
+    return this.authService.disable2fa(user.id, dto?.code, dto?.password);
+  }
+
+  @Post('2fa/totp/enable')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Включить 2FA через Google Authenticator' })
+  enableTotp(@CurrentUser() user: any) {
+    return this.authService.enableTotp(user.id);
+  }
+
+  @Post('2fa/totp/confirm')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Подтвердить настройку TOTP' })
+  confirmTotp(@CurrentUser() user: any, @Body() dto: { code: string }) {
+    return this.authService.confirmTotp(user.id, dto.code);
   }
 
   @Post('logout')
@@ -175,5 +189,20 @@ export class AuthController {
   @ApiOperation({ summary: 'Отозвать все сессии кроме текущей' })
   revokeAllSessions(@CurrentUser() user: any) {
     return this.authService.revokeAllSessions(user.id);
+  }
+
+  @Patch('profile')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Обновить профиль (ФИО, телефон)' })
+  updateProfile(@CurrentUser() user: any, @Body() dto: { fullName?: string; phone?: string }) {
+    return this.authService.updateProfile(user.id, dto);
+  }
+
+  @Patch('tenant')
+  @ApiBearerAuth()
+  @Roles(UserRole.admin)
+  @ApiOperation({ summary: 'Обновить реквизиты организации' })
+  updateTenant(@CurrentUser() user: any, @Body() dto: any) {
+    return this.authService.updateTenant(user.tenantId, dto);
   }
 }

@@ -3,12 +3,15 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+import { generateSecret, verifySync, generateURI } from 'otplib';
+import * as QRCode from 'qrcode';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import {
@@ -127,7 +130,7 @@ export class AuthService {
         },
       });
 
-      // Для платных планов создаём счёт на первый месяц
+      // Для платных планов создаётся счёт на первый месяц
       let subscriptionInvoice = null;
       if (price > 0) {
         const dueDate = new Date(trialEnd);
@@ -225,25 +228,30 @@ export class AuthService {
       throw new UnauthorizedException('Организация заблокирована');
 
     if (user.is2faEnabled) {
-      const otp = crypto.randomInt(100000, 1000000).toString();
-      const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
-      await this.redis.set(`otp:${user.id}`, otpHash, OTP_TTL);
-
       const tempToken = await this.jwt.signAsync(
         { userId: user.id, type: '2fa' },
         { expiresIn: '5m' },
       );
 
-      try {
-        await this.mailer.send(user.email, 'Код подтверждения', 'otp', {
-          code: otp,
-        });
-        this.logger.debug(`OTP отправлен на ${user.email}`);
-      } catch {
-        this.logger.error(`Не удалось отправить OTP на ${user.email}`);
+      const hasTotp = !!user.twoFaSecret;
+
+      // Отправка email OTP только если у пользователя нет TOTP
+      if (!hasTotp) {
+        const otp = crypto.randomInt(100000, 1000000).toString();
+        const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+        await this.redis.set(`otp:${user.id}`, otpHash, OTP_TTL);
+
+        try {
+          await this.mailer.send(user.email, 'Код подтверждения', 'otp', {
+            code: otp,
+          });
+          this.logger.debug(`OTP отправлен на ${user.email}`);
+        } catch {
+          this.logger.error(`Не удалось отправить OTP на ${user.email}`);
+        }
       }
 
-      return { requires2fa: true, tempToken };
+      return { requires2fa: true, tempToken, totpEnabled: hasTotp };
     }
 
     await this.prisma.user.update({
@@ -282,7 +290,46 @@ export class AuthService {
     if (payload.type !== '2fa')
       throw new UnauthorizedException('Неверный тип токена');
 
-    // Защита от брутфорса OTP
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.userId },
+    });
+    if (!user) throw new UnauthorizedException();
+
+    // Попытка проверки TOTP (Google Authenticator)
+    if (user.twoFaSecret) {
+      let totpValid = false;
+      try {
+        const result = verifySync({ token: dto.code, secret: user.twoFaSecret });
+        totpValid = result.valid;
+      } catch {
+        this.logger.warn(`TOTP verify threw for user ${user.id}`);
+      }
+      if (totpValid) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { lastLoginAt: new Date() },
+        });
+
+        const tokens = await this.generateTokens({
+          userId: user.id,
+          tenantId: user.tenantId,
+          role: user.role,
+        });
+        await this.saveSession(user.id, tokens.refreshToken, '2fa-login');
+
+        return {
+          ...tokens,
+          user: {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            fullName: user.fullName,
+          },
+        };
+      }
+    }
+
+    // Фоллбэк — проверка email OTP кода
     const attemptsKey = `otp-attempts:${payload.userId}`;
     const attempts = (await this.redis.get<number>(attemptsKey)) || 0;
     if (attempts >= MAX_OTP_ATTEMPTS) {
@@ -298,24 +345,25 @@ export class AuthService {
       .update(dto.code)
       .digest('hex');
 
-    if (
-      !otpHash ||
-      !crypto.timingSafeEqual(
-        Buffer.from(otpHash, 'hex'),
-        Buffer.from(inputHash, 'hex'),
-      )
-    ) {
+    let otpMatch = false;
+    try {
+      if (otpHash) {
+        otpMatch = crypto.timingSafeEqual(
+          Buffer.from(otpHash, 'hex'),
+          Buffer.from(inputHash, 'hex'),
+        );
+      }
+    } catch {
+      otpMatch = false;
+    }
+
+    if (!otpMatch) {
       await this.redis.set(attemptsKey, attempts + 1, OTP_TTL);
       throw new BadRequestException('Неверный код');
     }
 
     await this.redis.del(`otp:${payload.userId}`);
     await this.redis.del(attemptsKey);
-
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.userId },
-    });
-    if (!user) throw new UnauthorizedException();
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -360,17 +408,14 @@ export class AuthService {
     return { message: 'Код отправлен на email' };
   }
 
-  /** Включает двухфакторную аутентификацию */
-  async enable2fa(userId: number) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { is2faEnabled: true },
-    });
-    return { message: '2FA включена' };
-  }
+  /** Включает 2FA по email: без кода — отправляет OTP, с кодом — проверяет и включает */
+  async enable2fa(userId: number, code?: string) {
+    if (!code) {
+      // Шаг 1: отправить OTP для подтверждения
+      return this.send2faCode(userId);
+    }
 
-  /** Отключает двухфакторную аутентификацию */
-  async disable2fa(userId: number, code: string) {
+    // Шаг 2: проверить OTP и включить
     const otpHash = await this.redis.get<string>(`otp:${userId}`);
     const inputHash = crypto.createHash('sha256').update(code).digest('hex');
     if (
@@ -385,9 +430,103 @@ export class AuthService {
     await this.redis.del(`otp:${userId}`);
     await this.prisma.user.update({
       where: { id: userId },
-      data: { is2faEnabled: false },
+      data: { is2faEnabled: true },
+    });
+    return { message: '2FA включена' };
+  }
+
+  /** Отключает 2FA: принимает TOTP-код, email OTP или пароль */
+  async disable2fa(userId: number, code?: string, password?: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Пользователь не найден');
+
+    let verified = false;
+
+    // 1) Попытка TOTP (Google Authenticator)
+    if (!verified && code && user.twoFaSecret) {
+      try {
+        const result = verifySync({ token: code, secret: user.twoFaSecret });
+        if (result.valid) verified = true;
+      } catch {
+        this.logger.warn(`TOTP verify failed for user ${userId}`);
+      }
+    }
+
+    // 2) Попытка email OTP
+    if (!verified && code) {
+      try {
+        const otpHash = await this.redis.get<string>(`otp:${userId}`);
+        if (otpHash) {
+          const inputHash = crypto
+            .createHash('sha256')
+            .update(code)
+            .digest('hex');
+          if (
+            crypto.timingSafeEqual(
+              Buffer.from(otpHash, 'hex'),
+              Buffer.from(inputHash, 'hex'),
+            )
+          ) {
+            verified = true;
+            await this.redis.del(`otp:${userId}`);
+          }
+        }
+      } catch {
+        this.logger.warn(`Email OTP verify failed for user ${userId}`);
+      }
+    }
+
+    // 3) Пароль как крайний вариант
+    if (!verified && password) {
+      try {
+        const valid = await bcrypt.compare(password, user.passwordHash);
+        if (valid) verified = true;
+      } catch {
+        this.logger.warn(`Password verify failed for user ${userId}`);
+      }
+    }
+
+    if (!verified) {
+      throw new BadRequestException('Неверный код или пароль');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { is2faEnabled: false, twoFaSecret: null },
     });
     return { message: '2FA отключена' };
+  }
+
+  /** Генерирует TOTP-секрет и возвращает QR-код для Google Authenticator */
+  async enableTotp(userId: number) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Пользователь не найден');
+
+    const secret = generateSecret();
+    const otpauthUrl = generateURI({ secret, issuer: 'NGRent', label: user.email });
+    const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+    // Хранение секрета временно в Redis до подтверждения первым кодом
+    await this.redis.set(`totp_setup:${userId}`, secret, OTP_TTL);
+
+    return { secret, qrCode: qrCodeDataUrl, otpauthUrl };
+  }
+
+  /** Подтверждает настройку TOTP, проверяя первый код из приложения */
+  async confirmTotp(userId: number, code: string) {
+    const secret = await this.redis.get<string>(`totp_setup:${userId}`);
+    if (!secret) throw new BadRequestException('Сначала вызовите enableTotp');
+
+    const { valid: isValid } = verifySync({ token: code, secret });
+    if (!isValid) throw new BadRequestException('Неверный код');
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { twoFaSecret: secret, is2faEnabled: true },
+    });
+
+    await this.redis.del(`totp_setup:${userId}`);
+    return { message: '2FA через Google Authenticator активирована' };
   }
 
   /** Отправляет письмо для подтверждения email */
@@ -646,11 +785,58 @@ export class AuthService {
         is2faEnabled: true,
         lastLoginAt: true,
         createdAt: true,
-        tenant: { select: { id: true, name: true, slug: true, plan: true } },
+        tenant: {
+          select: {
+            id: true, name: true, slug: true, plan: true,
+            inn: true, kpp: true, ogrn: true, legalAddress: true,
+            contactEmail: true, contactPhone: true,
+            bankName: true, bankAccount: true, corrAccount: true, bik: true,
+            vatRate: true,
+          },
+        },
       },
     });
     if (!user) throw new UnauthorizedException();
     return user;
+  }
+
+  /** Обновляет профиль пользователя (ФИО, телефон) */
+  async updateProfile(userId: number, dto: { fullName?: string; phone?: string }) {
+    const data: any = {};
+    if (dto.fullName !== undefined) data.fullName = dto.fullName;
+    if (dto.phone !== undefined) data.phone = dto.phone;
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        role: true,
+        emailVerified: true,
+        is2faEnabled: true,
+        lastLoginAt: true,
+        tenant: { select: { id: true, name: true, slug: true, plan: true } },
+      },
+    });
+    return user;
+  }
+
+  /** Обновляет реквизиты организации */
+  async updateTenant(tenantId: number, dto: any) {
+    const allowed = [
+      'name', 'inn', 'kpp', 'ogrn', 'legalAddress', 'contactEmail',
+      'contactPhone', 'bankName', 'bankAccount', 'corrAccount', 'bik', 'vatRate',
+    ];
+    const data: any = {};
+    for (const key of allowed) {
+      if (dto[key] !== undefined) data[key] = dto[key];
+    }
+    if (data.vatRate !== undefined) {
+      data.vatRate = Number(data.vatRate);
+    }
+    return this.prisma.tenant.update({ where: { id: tenantId }, data });
   }
 
   private async generateTokens(payload: JwtPayload) {

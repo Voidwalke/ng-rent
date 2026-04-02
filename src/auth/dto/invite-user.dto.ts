@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsString } from 'class-validator';
+import { IsEmail, IsIn, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class InviteUserDto {
@@ -10,7 +10,7 @@ export class InviteUserDto {
   @IsString()
   fullName: string;
 
-  @ApiProperty({ enum: ['admin', 'manager', 'viewer'] })
-  @IsEnum(['admin', 'manager', 'viewer'])
-  role: 'admin' | 'manager' | 'viewer';
+  @ApiProperty({ enum: ['admin', 'manager', 'tenant'] })
+  @IsIn(['admin', 'manager', 'tenant'])
+  role: 'admin' | 'manager' | 'tenant';
 }

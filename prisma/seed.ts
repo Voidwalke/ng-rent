@@ -1,10 +1,16 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import pg from 'pg';
 import * as bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const hash = await bcrypt.hash('password123', 10);
+  const hashRomashka = await bcrypt.hash('securePass123', 10);
 
   // Суперадмин платформы (без тенанта — создадим системного)
   const systemTenant = await prisma.tenant.create({
@@ -76,12 +82,12 @@ async function main() {
     },
   });
 
-  const viewer1 = await prisma.user.create({
+  const tenant1User = await prisma.user.create({
     data: {
       tenantId: tenant1.id,
-      email: 'viewer@avangard.ru',
+      email: 'tenant@avangard.ru',
       passwordHash: hash,
-      role: 'viewer',
+      role: 'tenant',
       fullName: 'Иванов Пётр',
       emailVerified: true,
     },
@@ -96,6 +102,39 @@ async function main() {
       role: 'admin',
       fullName: 'Петров Игорь',
       emailVerified: true,
+    },
+  });
+
+  // Организация 3 — ООО Ромашка (демо-аккаунт)
+  const tenantRomashka = await prisma.tenant.create({
+    data: {
+      name: 'ООО Ромашка',
+      slug: 'romashka',
+      inn: '7712345678',
+      plan: 'pro',
+    },
+  });
+
+  await prisma.user.create({
+    data: {
+      tenantId: tenantRomashka.id,
+      email: 'admin@romashka.ru',
+      passwordHash: hashRomashka,
+      role: 'admin',
+      fullName: 'Администратор Ромашка',
+      emailVerified: true,
+      is2faEnabled: false,
+    },
+  });
+
+  await prisma.subscription.create({
+    data: {
+      tenantId: tenantRomashka.id,
+      plan: 'pro',
+      status: 'active',
+      currentPeriodStart: new Date('2026-01-01'),
+      currentPeriodEnd: new Date('2026-12-31'),
+      priceMonthly: 15000,
     },
   });
 
