@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Query, Body, ParseIntPipe, Res } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Body, ParseIntPipe, Res } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PlatformAnalyticsService } from './platform-analytics.service';
@@ -11,6 +11,65 @@ import { UserRole } from '@prisma/client';
 @Roles(UserRole.super_admin)
 export class PlatformAnalyticsController {
   constructor(private readonly analyticsService: PlatformAnalyticsService) {}
+
+  // ── Django-style Admin ──
+
+  @Get('models')
+  @ApiOperation({ summary: 'Список доступных моделей' })
+  getModels() {
+    return this.analyticsService.getAvailableModels();
+  }
+
+  @Get('models/:model/schema')
+  @ApiOperation({ summary: 'Схема полей модели' })
+  getModelSchema(@Param('model') model: string) {
+    return this.analyticsService.getModelFields(model);
+  }
+
+  @Get('models/:model')
+  @ApiOperation({ summary: 'Список записей модели' })
+  browseModel(
+    @Param('model') model: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('sort') sort?: string,
+    @Query('order') order?: 'asc' | 'desc',
+  ) {
+    return this.analyticsService.browseModel(model, { page: page ? +page : 1, limit: limit ? +limit : 25, search, sort, order });
+  }
+
+  @Get('models/:model/:id')
+  @ApiOperation({ summary: 'Запись модели по ID' })
+  getRecord(@Param('model') model: string, @Param('id', ParseIntPipe) id: number) {
+    return this.analyticsService.getModelRecord(model, id);
+  }
+
+  @Post('models/:model')
+  @ApiOperation({ summary: 'Создать запись модели' })
+  createRecord(@Param('model') model: string, @Body() body: any) {
+    return this.analyticsService.createModelRecord(model, body);
+  }
+
+  @Post('models/:model/bulk-delete')
+  @ApiOperation({ summary: 'Массовое удаление записей' })
+  bulkDelete(@Param('model') model: string, @Body('ids') ids: number[]) {
+    return this.analyticsService.bulkDeleteModelRecords(model, ids);
+  }
+
+  @Patch('models/:model/:id')
+  @ApiOperation({ summary: 'Обновить запись модели' })
+  updateRecord(@Param('model') model: string, @Param('id', ParseIntPipe) id: number, @Body() body: any) {
+    return this.analyticsService.updateModelRecord(model, id, body);
+  }
+
+  @Delete('models/:model/:id')
+  @ApiOperation({ summary: 'Удалить запись модели' })
+  deleteRecord(@Param('model') model: string, @Param('id', ParseIntPipe) id: number) {
+    return this.analyticsService.deleteModelRecord(model, id);
+  }
+
+  // ── Analytics ──
 
   @Get('mrr')
   @ApiOperation({ summary: 'MRR / ARR' })
