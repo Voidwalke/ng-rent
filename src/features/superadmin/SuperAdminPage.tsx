@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Typography, Tabs, Table, Button, Tag, Modal, Form, Input, Select, Popconfirm, Card, Row, Col, Statistic, message, Skeleton, Empty, Drawer, Space } from 'antd';
-import { PlusOutlined, ReloadOutlined, ExportOutlined, NotificationOutlined, SearchOutlined, DeleteOutlined, ClearOutlined } from '@ant-design/icons';
+import { Typography, Tabs, Table, Button, Tag, Modal, Form, Input, Select, Popconfirm, Card, Row, Col, Statistic, message, Skeleton, Empty, Drawer, Space, Menu, Switch, DatePicker, InputNumber, Pagination } from 'antd';
+import { PlusOutlined, ReloadOutlined, ExportOutlined, NotificationOutlined, SearchOutlined, DeleteOutlined, ClearOutlined, DatabaseOutlined, EditOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tenantsApi, platformAnalyticsApi, platformSupportApi } from '../../api/endpoints';
 import { formatDate, formatMoney, timeAgo } from '../../lib/format';
@@ -47,6 +48,17 @@ const SuperAdminPage: React.FC = () => {
   const [userRoleFilter, setUserRoleFilter] = useState<string>('');
   const [supportStatusFilter, setSupportStatusFilter] = useState<string>('');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('');
+
+  // ── Admin (Django-style) state ──
+  const [adminModel, setAdminModel] = useState('tenant');
+  const [adminPage, setAdminPage] = useState(1);
+  const [adminSearch, setAdminSearch] = useState('');
+  const [adminEditRecord, setAdminEditRecord] = useState<any>(null);
+  const [adminEditForm] = Form.useForm();
+  const [adminCreateModal, setAdminCreateModal] = useState(false);
+  const [adminCreateForm] = Form.useForm();
+  const [adminSelectedIds, setAdminSelectedIds] = useState<number[]>([]);
+  const [adminFieldFilter, setAdminFieldFilter] = useState<{ field: string; value: string } | null>(null);
 
   const { data, isLoading } = useQuery<PaginatedResponse<Tenant>>({
     queryKey: ['tenants', page],
@@ -153,6 +165,49 @@ const SuperAdminPage: React.FC = () => {
     mutationFn: () => platformAnalyticsApi.broadcast(broadcastTitle, broadcastMsg),
     onSuccess: () => { setBroadcastModal(false); setBroadcastTitle(''); setBroadcastMsg(''); message.success('Оповещение отправлено всем пользователям'); },
     onError: () => message.error('Ошибка отправки'),
+  });
+
+  // ── Admin (Django-style) queries ──
+  const { data: adminModels } = useQuery({
+    queryKey: ['admin-models'],
+    queryFn: () => platformAnalyticsApi.models(),
+  });
+
+  const { data: adminData, isLoading: adminLoading } = useQuery({
+    queryKey: ['admin-browse', adminModel, adminPage, adminSearch],
+    queryFn: () => platformAnalyticsApi.browseModel(adminModel, { page: adminPage, limit: 25, search: adminSearch || undefined }),
+    enabled: !!adminModel,
+  });
+
+  const { data: adminSchema } = useQuery({
+    queryKey: ['admin-schema', adminModel],
+    queryFn: () => platformAnalyticsApi.modelSchema(adminModel),
+    enabled: !!adminModel,
+  });
+
+  // ── Admin mutations ──
+  const adminUpdateMutation = useMutation({
+    mutationFn: ({ model, id, data }: any) => platformAnalyticsApi.updateRecord(model, id, data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-browse'] }); setAdminEditRecord(null); message.success('Запись обновлена'); },
+    onError: () => message.error('Ошибка обновления'),
+  });
+
+  const adminDeleteMutation = useMutation({
+    mutationFn: ({ model, id }: any) => platformAnalyticsApi.deleteRecord(model, id),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-browse'] }); message.success('Запись удалена'); },
+    onError: () => message.error('Ошибка удаления'),
+  });
+
+  const adminCreateMutation = useMutation({
+    mutationFn: (data: any) => platformAnalyticsApi.createRecord(adminModel, data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-browse'] }); setAdminCreateModal(false); adminCreateForm.resetFields(); message.success('Запись создана'); },
+    onError: (e: any) => message.error(e?.response?.data?.message || 'Ошибка создания'),
+  });
+
+  const adminBulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => platformAnalyticsApi.bulkDelete(adminModel, ids),
+    onSuccess: (res: any) => { queryClient.invalidateQueries({ queryKey: ['admin-browse'] }); setAdminSelectedIds([]); message.success(`Удалено: ${res?.deleted || 0}`); },
+    onError: () => message.error('Ошибка удаления'),
   });
 
   // ── Export platform handler ──
@@ -267,6 +322,317 @@ const SuperAdminPage: React.FC = () => {
     }
     return months;
   }, [allTenants]);
+
+  // ── Admin tab helpers ──
+  const adminRecords = adminData?.data || [];
+  const adminTotal = adminData?.total ?? 0;
+
+  const filteredAdminRecords = useMemo(() => {
+    if (!adminFieldFilter) return adminRecords;
+    return adminRecords.filter((r: any) => String(r[adminFieldFilter.field]) === adminFieldFilter.value);
+  }, [adminRecords, adminFieldFilter]);
+
+  const adminColumns = useMemo(() => {
+    if (!adminRecords.length) return [];
+    const sample = adminRecords[0] as Record<string, any>;
+    const cols: any[] = [];
+    for (const key of Object.keys(sample)) {
+      const val = sample[key];
+      // Skip complex arrays
+      if (Array.isArray(val)) continue;
+      // For objects with name property, show the name
+      if (val && typeof val === 'object' && val !== null && 'name' in val) {
+        cols.push({
+          title: key,
+          dataIndex: key,
+          key,
+          render: (v: any) => v?.name ?? '—',
+          ellipsis: true,
+        });
+        continue;
+      }
+      // Skip other complex objects (but allow null)
+      if (val && typeof val === 'object') continue;
+      // Primitive values
+      cols.push({
+        title: key,
+        dataIndex: key,
+        key,
+        ellipsis: true,
+        render: (v: any) => {
+          if (v === null || v === undefined) return '—';
+          if (typeof v === 'boolean') return v ? <Tag color="green">Да</Tag> : <Tag color="default">Нет</Tag>;
+          const s = String(v);
+          // Detect ISO dates
+          if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return timeAgo(v);
+          // Truncate long strings
+          if (s.length > 60) return s.slice(0, 57) + '...';
+          return s;
+        },
+      });
+    }
+    return cols;
+  }, [adminRecords]);
+
+  const openAdminEdit = (record: any) => {
+    setAdminEditRecord(record);
+    const formValues: any = {};
+    if (adminSchema?.fields) {
+      for (const field of adminSchema.fields) {
+        const val = record[field.name];
+        if (field.type === 'date' && val) {
+          formValues[field.name] = dayjs(val);
+        } else {
+          formValues[field.name] = val;
+        }
+      }
+    } else {
+      Object.assign(formValues, record);
+    }
+    adminEditForm.setFieldsValue(formValues);
+  };
+
+  const handleAdminSave = () => {
+    adminEditForm.validateFields().then((values) => {
+      // Convert dayjs back to ISO
+      const payload: any = {};
+      for (const [k, v] of Object.entries(values)) {
+        if (v && typeof v === 'object' && 'toISOString' in (v as any)) {
+          payload[k] = (v as any).toISOString();
+        } else {
+          payload[k] = v;
+        }
+      }
+      adminUpdateMutation.mutate({ model: adminModel, id: adminEditRecord.id, data: payload });
+    });
+  };
+
+  const renderAdminFormField = (field: { name: string; type: string; required?: boolean }) => {
+    if (field.name === 'id' || field.name === 'createdAt' || field.name === 'created_at') {
+      return (
+        <Form.Item key={field.name} label={field.name} name={field.name}>
+          <Input disabled />
+        </Form.Item>
+      );
+    }
+    if (field.type === 'boolean') {
+      return (
+        <Form.Item key={field.name} label={field.name} name={field.name} valuePropName="checked">
+          <Switch />
+        </Form.Item>
+      );
+    }
+    if (field.type === 'number') {
+      return (
+        <Form.Item key={field.name} label={field.name} name={field.name} rules={field.required ? [{ required: true, message: 'Обязательное поле' }] : []}>
+          <InputNumber style={{ width: '100%' }} />
+        </Form.Item>
+      );
+    }
+    if (field.type === 'date') {
+      return (
+        <Form.Item key={field.name} label={field.name} name={field.name} rules={field.required ? [{ required: true, message: 'Обязательное поле' }] : []}>
+          <DatePicker style={{ width: '100%' }} />
+        </Form.Item>
+      );
+    }
+    if (field.type.startsWith('select:')) {
+      const options = field.type.replace('select:', '').split(',').map((o) => ({ value: o.trim(), label: o.trim() }));
+      return (
+        <Form.Item key={field.name} label={field.name} name={field.name} rules={field.required ? [{ required: true, message: 'Обязательное поле' }] : []}>
+          <Select options={options} allowClear />
+        </Form.Item>
+      );
+    }
+    // Default: string
+    return (
+      <Form.Item key={field.name} label={field.name} name={field.name} rules={field.required ? [{ required: true, message: 'Обязательное поле' }] : []}>
+        <Input />
+      </Form.Item>
+    );
+  };
+
+  const adminTab = (
+    <div style={{ display: 'flex', gap: 16 }}>
+      <Card style={{ width: 220, flexShrink: 0 }} bodyStyle={{ padding: 0 }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0' }}>
+          <Text strong><DatabaseOutlined /> Модели</Text>
+        </div>
+        <Menu
+          mode="inline"
+          selectedKeys={[adminModel]}
+          onClick={({ key }) => { setAdminModel(key); setAdminPage(1); setAdminSearch(''); setAdminSelectedIds([]); setAdminFieldFilter(null); }}
+          items={(Array.isArray(adminModels) ? adminModels : (adminModels as any)?.data || []).map((m: any) => ({
+            key: m.key,
+            icon: m.icon ? <span>{m.icon}</span> : <DatabaseOutlined />,
+            label: m.label,
+          }))}
+          style={{ border: 'none' }}
+        />
+      </Card>
+      <div style={{ flex: 1 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <Space>
+            <Input
+              prefix={<SearchOutlined />}
+              placeholder="Поиск записей..."
+              value={adminSearch}
+              onChange={(e) => { setAdminSearch(e.target.value); setAdminPage(1); }}
+              allowClear
+              style={{ width: 360 }}
+            />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { adminCreateForm.resetFields(); setAdminCreateModal(true); }}>Создать</Button>
+          </Space>
+          <Text type="secondary">{adminTotal} записей</Text>
+        </div>
+        {adminSchema?.fields?.filter((f: any) => f.type.startsWith('select:')).length > 0 && (
+          <Space wrap style={{ marginBottom: 12 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Фильтры:</Text>
+            {adminSchema.fields.filter((f: any) => f.type.startsWith('select:')).map((f: any) => (
+              <Select
+                key={f.name}
+                placeholder={f.name}
+                allowClear
+                size="small"
+                style={{ width: 140 }}
+                value={adminFieldFilter?.field === f.name ? adminFieldFilter.value : undefined}
+                onChange={(v) => setAdminFieldFilter(v ? { field: f.name, value: v } : null)}
+                options={f.type.replace('select:', '').split(',').map((o: string) => ({ value: o, label: o }))}
+              />
+            ))}
+          </Space>
+        )}
+        {adminSelectedIds.length > 0 && (
+          <div style={{ marginBottom: 12, padding: '8px 16px', background: '#fff2e8', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Text>Выбрано: {adminSelectedIds.length}</Text>
+            <Popconfirm title={`Удалить ${adminSelectedIds.length} записей?`} onConfirm={() => adminBulkDeleteMutation.mutate(adminSelectedIds)}>
+              <Button size="small" danger>Удалить выбранные</Button>
+            </Popconfirm>
+            <Button size="small" type="link" onClick={() => setAdminSelectedIds([])}>Сбросить</Button>
+          </div>
+        )}
+        <Table
+          loading={adminLoading}
+          dataSource={filteredAdminRecords}
+          rowSelection={{ selectedRowKeys: adminSelectedIds, onChange: (keys) => setAdminSelectedIds(keys as number[]) }}
+          columns={[
+            ...adminColumns,
+            {
+              title: '',
+              key: '_actions',
+              width: 120,
+              render: (_: any, record: any) => (
+                <Space size={4}>
+                  <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openAdminEdit(record); }}>Ред.</Button>
+                  <Popconfirm title="Удалить запись?" okText="Да" cancelText="Нет" onConfirm={(e) => { e?.stopPropagation(); adminDeleteMutation.mutate({ model: adminModel, id: record.id }); }}>
+                    <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
+                  </Popconfirm>
+                </Space>
+              ),
+            },
+          ]}
+          rowKey="id"
+          scroll={{ x: 'max-content' }}
+          pagination={false}
+          size="small"
+          onRow={(record) => ({ onClick: () => openAdminEdit(record), style: { cursor: 'pointer' } })}
+        />
+        {adminTotal > 25 && (
+          <div style={{ marginTop: 16, textAlign: 'right' }}>
+            <Pagination current={adminPage} total={adminTotal} pageSize={25} onChange={setAdminPage} showSizeChanger={false} />
+          </div>
+        )}
+
+        {/* Edit Drawer */}
+        <Drawer
+          title={adminEditRecord ? `Редактирование: ${adminModel} #${adminEditRecord.id}` : 'Редактирование'}
+          open={!!adminEditRecord}
+          onClose={() => { setAdminEditRecord(null); adminEditForm.resetFields(); }}
+          width={window.innerWidth < 600 ? '100%' : 520}
+          extra={
+            <Button type="primary" onClick={handleAdminSave} loading={adminUpdateMutation.isPending}>
+              Сохранить
+            </Button>
+          }
+        >
+          {adminEditRecord && (
+            <Form form={adminEditForm} layout="vertical">
+              {adminSchema?.fields
+                ? adminSchema.fields.map((f: any) => renderAdminFormField(f))
+                : Object.keys(adminEditRecord)
+                    .filter((k) => {
+                      const v = adminEditRecord[k];
+                      return v === null || typeof v !== 'object';
+                    })
+                    .map((k) => (
+                      <Form.Item key={k} label={k} name={k}>
+                        {k === 'id' || k === 'createdAt' || k === 'created_at' ? (
+                          <Input disabled />
+                        ) : typeof adminEditRecord[k] === 'boolean' ? (
+                          <Switch />
+                        ) : typeof adminEditRecord[k] === 'number' ? (
+                          <InputNumber style={{ width: '100%' }} />
+                        ) : (
+                          <Input />
+                        )}
+                      </Form.Item>
+                    ))
+              }
+            </Form>
+          )}
+          {adminEditRecord && Object.entries(adminEditRecord).filter(([, v]) => Array.isArray(v) && (v as any[]).length > 0).map(([key, arr]) => (
+            <div key={key} style={{ marginTop: 24 }}>
+              <Text strong style={{ display: 'block', marginBottom: 8 }}>{key} ({(arr as any[]).length})</Text>
+              <Table
+                dataSource={arr as any[]}
+                rowKey={(r) => r.id || Math.random()}
+                pagination={false}
+                size="small"
+                scroll={{ x: 'max-content' }}
+                columns={Object.keys((arr as any[])[0] || {}).filter(k => typeof (arr as any[])[0][k] !== 'object').slice(0, 5).map(col => ({
+                  title: col,
+                  dataIndex: col,
+                  key: col,
+                  render: (v: any) => v == null ? '—' : String(v).slice(0, 50),
+                }))}
+              />
+            </div>
+          ))}
+        </Drawer>
+
+        {/* Create Record Modal */}
+        <Modal
+          title={`Создать запись: ${adminModel}`}
+          open={adminCreateModal}
+          onOk={() => {
+            adminCreateForm.validateFields().then((values) => {
+              const payload: any = {};
+              for (const [k, v] of Object.entries(values)) {
+                if (v && typeof v === 'object' && 'toISOString' in (v as any)) {
+                  payload[k] = (v as any).toISOString();
+                } else {
+                  payload[k] = v;
+                }
+              }
+              adminCreateMutation.mutate(payload);
+            });
+          }}
+          onCancel={() => { setAdminCreateModal(false); adminCreateForm.resetFields(); }}
+          confirmLoading={adminCreateMutation.isPending}
+          okText="Создать"
+          cancelText="Отмена"
+          width={window.innerWidth < 500 ? '95%' : 520}
+        >
+          <Form form={adminCreateForm} layout="vertical" style={{ marginTop: 16 }}>
+            {adminSchema?.fields
+              ? adminSchema.fields.filter((f: any) => f.name !== 'id' && f.name !== 'createdAt' && f.name !== 'created_at').map((f: any) => renderAdminFormField(f))
+              : <Text type="secondary">Загрузка схемы...</Text>
+            }
+          </Form>
+        </Modal>
+      </div>
+    </div>
+  );
 
   const columns = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
@@ -861,6 +1227,7 @@ const SuperAdminPage: React.FC = () => {
       </div>
 
       <Tabs items={[
+        { key: 'admin', label: 'Админка', children: adminTab },
         { key: 'tenants', label: 'Тенанты', children: tenantsTab },
         { key: 'analytics', label: 'Аналитика платформы', children: analyticsTab },
         { key: 'support', label: 'Поддержка', children: supportTab },
